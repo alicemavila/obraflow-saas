@@ -1,0 +1,436 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum CompanyPlan {
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN_EMPRESA
+  GESTOR_OBRA
+  COLABORADOR
+  CLIENTE_SINDICO
+}
+
+enum WorksiteStatus {
+  PLANEJAMENTO
+  EM_ANDAMENTO
+  PAUSADA
+  CONCLUIDA
+  CANCELADA
+}
+
+enum WeatherCondition {
+  ENSOLARADO
+  NUBLADO
+  PARCIALMENTE_NUBLADO
+  CHUVOSO
+  TEMPESTADE
+  NEVE
+  VENTO_FORTE
+  NEBLINA
+}
+
+enum DailyLogStatus {
+  RASCUNHO
+  SUBMETIDO
+  APROVADO
+  REJEITADO
+}
+
+enum WorkShift {
+  MANHA
+  TARDE
+  NOITE
+  INTEGRAL
+}
+
+enum OccurrenceType {
+  INCIDENTE
+  ACIDENTE
+  PARALISACAO
+  VISITA_TECNICA
+  INSPECAO
+  OBSERVACAO
+  OUTRO
+}
+
+enum OccurrenceSeverity {
+  BAIXA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+enum AttachmentEntityType {
+  DAILY_LOG
+  ACTIVITY
+  OCCURRENCE
+  WORKSITE
+  USER
+}
+
+enum CommentEntityType {
+  DAILY_LOG
+  ACTIVITY
+  OCCURRENCE
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model Company {
+  id             String        @id @default(uuid())
+  name           String        @db.VarChar(255)
+  cnpj           String        @unique @db.VarChar(18)
+  slug           String        @unique @db.VarChar(63)
+  plan           CompanyPlan   @default(STARTER)
+  status         CompanyStatus @default(ACTIVE)
+  logoUrl        String?
+  logoStorageKey String?
+  maxWorksites   Int           @default(3)
+  maxUsers       Int           @default(5)
+  trialEndsAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  users         User[]
+  worksites     Worksite[]
+  dailyLogs     DailyLog[]
+  auditLogs     AuditLog[]
+  inviteTokens  InviteToken[]
+  worksiteUsers WorksiteUser[]
+}
+
+model User {
+  id                String    @id @default(uuid())
+  companyId         String?
+  email             String    @unique @db.VarChar(255)
+  passwordHash      String    @db.VarChar(255)
+  name              String    @db.VarChar(255)
+  phone             String?   @db.VarChar(20)
+  avatarUrl         String?
+  avatarStorageKey  String?
+  role              UserRole
+  isActive          Boolean   @default(true)
+  emailVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  company             Company?         @relation(fields: [companyId], references: [id])
+  worksiteUsers       WorksiteUser[]
+  createdWorksites    Worksite[]       @relation("WorksiteCreatedBy")
+  createdDailyLogs    DailyLog[]       @relation("DailyLogCreatedBy")
+  submittedDailyLogs  DailyLog[]       @relation("DailyLogSubmittedBy")
+  approvedDailyLogs   DailyLog[]       @relation("DailyLogApprovedBy")
+  rejectedDailyLogs   DailyLog[]       @relation("DailyLogRejectedBy")
+  createdActivities   Activity[]
+  createdOccurrences  Occurrence[]
+  uploadedAttachments Attachment[]
+  comments            Comment[]
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+  sentInvites         InviteToken[]
+
+  @@index([companyId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @db.VarChar(255)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model InviteToken {
+  id              String    @id @default(uuid())
+  companyId       String
+  invitedByUserId String
+  email           String    @db.VarChar(255)
+  role            UserRole
+  tokenHash       String    @unique @db.VarChar(255)
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  company   Company @relation(fields: [companyId], references: [id])
+  invitedBy User    @relation(fields: [invitedByUserId], references: [id])
+
+  @@index([email])
+  @@index([companyId])
+}
+
+model Worksite {
+  id              String         @id @default(uuid())
+  companyId       String
+  name            String         @db.VarChar(255)
+  address         String         @db.VarChar(500)
+  neighborhood    String?        @db.VarChar(255)
+  city            String         @db.VarChar(255)
+  state           String         @db.Char(2)
+  cep             String         @db.VarChar(10)
+  lat             Decimal?       @db.Decimal(10, 8)
+  lng             Decimal?       @db.Decimal(11, 8)
+  artNumber       String?        @db.VarChar(50)
+  artDocumentUrl  String?
+  responsibleName String         @db.VarChar(255)
+  responsibleCrea String?        @db.VarChar(50)
+  startDate       DateTime       @db.Date
+  endDateForecast DateTime?      @db.Date
+  endDateActual   DateTime?      @db.Date
+  status          WorksiteStatus @default(PLANEJAMENTO)
+  description     String?
+  clientName      String?        @db.VarChar(255)
+  contractNumber  String?        @db.VarChar(100)
+  totalArea       Decimal?       @db.Decimal(10, 2)
+  createdById     String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  createdBy     User           @relation("WorksiteCreatedBy", fields: [createdById], references: [id])
+  worksiteUsers WorksiteUser[]
+  dailyLogs     DailyLog[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+}
+
+model WorksiteUser {
+  id           String   @id @default(uuid())
+  worksiteId   String
+  userId       String
+  companyId    String
+  role         UserRole
+  assignedAt   DateTime @default(now())
+  assignedById String
+
+  worksite Worksite @relation(fields: [worksiteId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id])
+
+  @@unique([worksiteId, userId])
+  @@index([companyId])
+  @@index([userId])
+}
+
+model DailyLog {
+  id               String           @id @default(uuid())
+  worksiteId       String
+  companyId        String
+  date             DateTime         @db.Date
+  weatherMorning   WeatherCondition?
+  weatherAfternoon WeatherCondition?
+  weatherEvening   WeatherCondition?
+  tempMin          Decimal?         @db.Decimal(4, 1)
+  tempMax          Decimal?         @db.Decimal(4, 1)
+  workedHours      Decimal?         @db.Decimal(4, 1)
+  notes            String?
+  status           DailyLogStatus   @default(RASCUNHO)
+  createdById      String
+  submittedAt      DateTime?
+  submittedById    String?
+  approvedAt       DateTime?
+  approvedById     String?
+  rejectedAt       DateTime?
+  rejectedById     String?
+  rejectionReason  String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  worksite    Worksite    @relation(fields: [worksiteId], references: [id])
+  company     Company     @relation(fields: [companyId], references: [id])
+  createdBy   User        @relation("DailyLogCreatedBy", fields: [createdById], references: [id])
+  submittedBy User?       @relation("DailyLogSubmittedBy", fields: [submittedById], references: [id])
+  approvedBy  User?       @relation("DailyLogApprovedBy", fields: [approvedById], references: [id])
+  rejectedBy  User?       @relation("DailyLogRejectedBy", fields: [rejectedById], references: [id])
+  activities  Activity[]
+  laborRecords Labor[]
+  materials   Material[]
+  occurrences Occurrence[]
+
+  @@unique([worksiteId, date])
+  @@index([companyId])
+  @@index([worksiteId, status])
+  @@index([worksiteId, date(sort: Desc)])
+}
+
+model Activity {
+  id          String   @id @default(uuid())
+  dailyLogId  String
+  companyId   String
+  description String
+  location    String?  @db.VarChar(255)
+  progress    Decimal? @db.Decimal(5, 2)
+  unit        String?  @db.VarChar(50)
+  quantity    Decimal? @db.Decimal(10, 2)
+  notes       String?
+  order       Int      @default(0)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  dailyLog  DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id])
+
+  @@index([dailyLogId])
+  @@index([companyId])
+}
+
+model Labor {
+  id         String    @id @default(uuid())
+  dailyLogId String
+  companyId  String
+  role       String    @db.VarChar(100)
+  quantity   Int       @db.SmallInt
+  shift      WorkShift
+  contractor String?   @db.VarChar(255)
+  notes      String?
+  createdAt  DateTime  @default(now())
+
+  dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+
+  @@index([dailyLogId])
+}
+
+model Material {
+  id         String   @id @default(uuid())
+  dailyLogId String
+  companyId  String
+  name       String   @db.VarChar(255)
+  quantity   Decimal  @db.Decimal(12, 3)
+  unit       String   @db.VarChar(20)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+
+  @@index([dailyLogId])
+}
+
+model Occurrence {
+  id          String             @id @default(uuid())
+  dailyLogId  String
+  companyId   String
+  type        OccurrenceType
+  severity    OccurrenceSeverity @default(BAIXA)
+  description String
+  actionTaken String?
+  isResolved  Boolean            @default(false)
+  resolvedAt  DateTime?
+  createdById String
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  dailyLog  DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id])
+
+  @@index([dailyLogId])
+  @@index([companyId, type])
+}
+
+model Attachment {
+  id           String               @id @default(uuid())
+  companyId    String
+  entityType   AttachmentEntityType
+  entityId     String               @db.Uuid
+  fileName     String               @db.VarChar(500)
+  fileSize     BigInt
+  mimeType     String               @db.VarChar(127)
+  storageKey   String
+  isPublic     Boolean              @default(false)
+  uploadedById String
+  deletedAt    DateTime?
+  createdAt    DateTime             @default(now())
+
+  uploadedBy User   @relation(fields: [uploadedById], references: [id])
+  photo      Photo?
+
+  @@index([entityType, entityId])
+  @@index([companyId])
+}
+
+model Photo {
+  id                  String   @id @default(uuid())
+  attachmentId        String   @unique
+  companyId           String
+  caption             String?
+  lat                 Decimal? @db.Decimal(10, 8)
+  lng                 Decimal? @db.Decimal(11, 8)
+  takenAt             DateTime?
+  thumbnailStorageKey String?
+  width               Int?
+  height              Int?
+  order               Int      @default(0)
+
+  attachment Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model Comment {
+  id          String            @id @default(uuid())
+  companyId   String
+  entityType  CommentEntityType
+  entityId    String            @db.Uuid
+  content     String
+  createdById String
+  isDeleted   Boolean           @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([companyId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  companyId  String?
+  userId     String?
+  userEmail  String?  @db.VarChar(255)
+  action     String   @db.VarChar(100)
+  entityType String   @db.VarChar(100)
+  entityId   String?
+  payload    Json?
+  ipAddress  String
+  userAgent  String
+  createdAt  DateTime @default(now())
+
+  company Company? @relation(fields: [companyId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+}
