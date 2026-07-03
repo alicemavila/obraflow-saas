@@ -1,4 +1,7 @@
-import { PrismaClient, UserRole, CompanyPlan, CompanyStatus, WorksiteStatus } from '@prisma/client'
+import {
+  PrismaClient, UserRole, CompanyPlan, CompanyStatus,
+  WorksiteStatus, WorksiteRegistrationMode,
+} from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -7,19 +10,18 @@ async function main() {
   console.log('🌱 Iniciando seed do banco de dados...')
 
   // ─── SUPER ADMIN ──────────────────────────────────────────────────────────
-  const superAdminHash = await bcrypt.hash('SuperAdmin@2025', 12)
   const superAdmin = await prisma.user.upsert({
     where: { email: 'superadmin@diariobras.com' },
     update: {},
     create: {
       email: 'superadmin@diariobras.com',
-      passwordHash: superAdminHash,
+      passwordHash: await bcrypt.hash('SuperAdmin@2025', 12),
       name: 'Super Administrador',
       role: UserRole.SUPER_ADMIN,
       isActive: true,
     },
   })
-  console.log('✅ SUPER_ADMIN criado:', superAdmin.email)
+  console.log('✅ SUPER_ADMIN:', superAdmin.email)
 
   // ─── EMPRESA DEMO ─────────────────────────────────────────────────────────
   const company = await prisma.company.upsert({
@@ -35,76 +37,82 @@ async function main() {
       maxUsers: 20,
     },
   })
-  console.log('✅ Empresa demo criada:', company.name)
+  console.log('✅ Empresa:', company.name)
 
-  // ─── ADMIN DA EMPRESA ─────────────────────────────────────────────────────
-  const adminHash = await bcrypt.hash('Admin@2025', 12)
+  // ─── USUÁRIOS ─────────────────────────────────────────────────────────────
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@construtora-demo.com' },
     update: {},
     create: {
       companyId: company.id,
       email: 'admin@construtora-demo.com',
-      passwordHash: adminHash,
+      passwordHash: await bcrypt.hash('Admin@2025', 12),
       name: 'Maria Administradora',
       role: UserRole.ADMIN_EMPRESA,
       isActive: true,
     },
   })
-  console.log('✅ ADMIN_EMPRESA criado:', adminUser.email)
 
-  // ─── GESTOR DE OBRA ───────────────────────────────────────────────────────
-  const gestorHash = await bcrypt.hash('Gestor@2025', 12)
   const gestorUser = await prisma.user.upsert({
     where: { email: 'gestor@construtora-demo.com' },
     update: {},
     create: {
       companyId: company.id,
       email: 'gestor@construtora-demo.com',
-      passwordHash: gestorHash,
+      passwordHash: await bcrypt.hash('Gestor@2025', 12),
       name: 'Carlos Gestor',
       role: UserRole.GESTOR_OBRA,
       isActive: true,
     },
   })
-  console.log('✅ GESTOR_OBRA criado:', gestorUser.email)
 
-  // ─── COLABORADOR ──────────────────────────────────────────────────────────
-  const colaboradorHash = await bcrypt.hash('Colab@2025', 12)
   const colaboradorUser = await prisma.user.upsert({
     where: { email: 'colaborador@construtora-demo.com' },
     update: {},
     create: {
       companyId: company.id,
       email: 'colaborador@construtora-demo.com',
-      passwordHash: colaboradorHash,
+      passwordHash: await bcrypt.hash('Colab@2025', 12),
       name: 'João Colaborador',
       role: UserRole.COLABORADOR,
       isActive: true,
     },
   })
-  console.log('✅ COLABORADOR criado:', colaboradorUser.email)
 
-  // ─── CLIENTE/SÍNDICO ──────────────────────────────────────────────────────
-  const clienteHash = await bcrypt.hash('Cliente@2025', 12)
   const clienteUser = await prisma.user.upsert({
     where: { email: 'sindico@condominio-demo.com' },
     update: {},
     create: {
       companyId: company.id,
       email: 'sindico@condominio-demo.com',
-      passwordHash: clienteHash,
+      passwordHash: await bcrypt.hash('Cliente@2025', 12),
       name: 'Ana Síndica',
       role: UserRole.CLIENTE_SINDICO,
       isActive: true,
     },
   })
-  console.log('✅ CLIENTE_SINDICO criado:', clienteUser.email)
+  console.log('✅ Usuários criados: admin, gestor, colaborador, cliente')
 
-  // ─── OBRAS DEMO ───────────────────────────────────────────────────────────
+  // ─── GRUPOS DE OBRA ───────────────────────────────────────────────────────
+  const group = await prisma.worksiteGroup.upsert({
+    where: { id: 'demo-group-aaaa-aaaa-aaaaaaaaaa01' },
+    update: {},
+    create: {
+      id: 'demo-group-aaaa-aaaa-aaaaaaaaaa01',
+      companyId: company.id,
+      name: 'Geral',
+    },
+  })
+  console.log('✅ Grupo criado:', group.name)
+
+  // ─── OBRA 1 — Cadastro COMPLETO (existente, dados suficientes) ─────────────
   const worksite1 = await prisma.worksite.upsert({
     where: { id: 'demo-worksite-1-aaaa-aaaa-aaaaaaaaaa01' },
-    update: {},
+    update: {
+      registrationMode: WorksiteRegistrationMode.COMPLETE,
+      isProfileComplete: true,
+      groupId: group.id,
+    },
     create: {
       id: 'demo-worksite-1-aaaa-aaaa-aaaaaaaaaa01',
       companyId: company.id,
@@ -122,14 +130,22 @@ async function main() {
       status: WorksiteStatus.EM_ANDAMENTO,
       clientName: 'Condomínio Aurora',
       contractNumber: 'CT-2024-001',
+      contractType: 'Empreitada global',
       totalArea: 15000,
+      registrationMode: WorksiteRegistrationMode.COMPLETE,
+      isProfileComplete: true,
+      groupId: group.id,
       createdById: adminUser.id,
     },
   })
 
+  // ─── OBRA 2 — Cadastro COMPLETO (planejamento) ────────────────────────────
   const worksite2 = await prisma.worksite.upsert({
     where: { id: 'demo-worksite-2-bbbb-bbbb-bbbbbbbbb002' },
-    update: {},
+    update: {
+      registrationMode: WorksiteRegistrationMode.COMPLETE,
+      isProfileComplete: true,
+    },
     create: {
       id: 'demo-worksite-2-bbbb-bbbb-bbbbbbbbb002',
       companyId: company.id,
@@ -146,63 +162,53 @@ async function main() {
       clientName: 'Condomínio Bosque Verde',
       contractNumber: 'CT-2025-001',
       totalArea: 8500,
+      registrationMode: WorksiteRegistrationMode.COMPLETE,
+      isProfileComplete: true,
+      groupId: group.id,
       createdById: adminUser.id,
     },
   })
-  console.log('✅ Obras demo criadas:', worksite1.name, '|', worksite2.name)
+
+  // ─── OBRA 3 — Cadastro SIMPLES (incompleto) ───────────────────────────────
+  const worksite3 = await prisma.worksite.upsert({
+    where: { id: 'demo-worksite-3-cccc-cccc-ccccccccc003' },
+    update: {},
+    create: {
+      id: 'demo-worksite-3-cccc-cccc-ccccccccc003',
+      companyId: company.id,
+      name: 'Reforma Comercial Centro',
+      status: WorksiteStatus.PLANEJAMENTO,
+      registrationMode: WorksiteRegistrationMode.SIMPLE,
+      isProfileComplete: false,
+      hasTaskList: true,
+      groupId: group.id,
+      createdById: adminUser.id,
+    },
+  })
+
+  console.log('✅ Obras criadas:')
+  console.log(`   • ${worksite1.name} (COMPLETO, EM_ANDAMENTO)`)
+  console.log(`   • ${worksite2.name} (COMPLETO, PLANEJAMENTO)`)
+  console.log(`   • ${worksite3.name} (SIMPLES/INCOMPLETO)`)
 
   // ─── ASSOCIAÇÕES OBRA/USUÁRIO ─────────────────────────────────────────────
-  await prisma.worksiteUser.upsert({
-    where: {
-      worksiteId_userId: { worksiteId: worksite1.id, userId: gestorUser.id },
-    },
-    update: {},
-    create: {
-      worksiteId: worksite1.id,
-      userId: gestorUser.id,
-      companyId: company.id,
-      role: UserRole.GESTOR_OBRA,
-      assignedById: adminUser.id,
-    },
-  })
-
-  await prisma.worksiteUser.upsert({
-    where: {
-      worksiteId_userId: { worksiteId: worksite1.id, userId: colaboradorUser.id },
-    },
-    update: {},
-    create: {
-      worksiteId: worksite1.id,
-      userId: colaboradorUser.id,
-      companyId: company.id,
-      role: UserRole.COLABORADOR,
-      assignedById: adminUser.id,
-    },
-  })
-
-  await prisma.worksiteUser.upsert({
-    where: {
-      worksiteId_userId: { worksiteId: worksite1.id, userId: clienteUser.id },
-    },
-    update: {},
-    create: {
-      worksiteId: worksite1.id,
-      userId: clienteUser.id,
-      companyId: company.id,
-      role: UserRole.CLIENTE_SINDICO,
-      assignedById: adminUser.id,
-    },
-  })
+  for (const [wsId, userId, role] of [
+    [worksite1.id, gestorUser.id, UserRole.GESTOR_OBRA],
+    [worksite1.id, colaboradorUser.id, UserRole.COLABORADOR],
+    [worksite1.id, clienteUser.id, UserRole.CLIENTE_SINDICO],
+    [worksite3.id, gestorUser.id, UserRole.GESTOR_OBRA],
+  ] as [string, string, UserRole][]) {
+    await prisma.worksiteUser.upsert({
+      where: { worksiteId_userId: { worksiteId: wsId, userId } },
+      update: {},
+      create: { worksiteId: wsId, userId, companyId: company.id, role, assignedById: adminUser.id },
+    })
+  }
   console.log('✅ Associações obra/usuário criadas')
 
   // ─── DIÁRIO DEMO ──────────────────────────────────────────────────────────
   const dailyLog = await prisma.dailyLog.upsert({
-    where: {
-      worksiteId_date: {
-        worksiteId: worksite1.id,
-        date: new Date('2025-01-10'),
-      },
-    },
+    where: { worksiteId_date: { worksiteId: worksite1.id, date: new Date('2025-01-10') } },
     update: {},
     create: {
       worksiteId: worksite1.id,
@@ -223,72 +229,42 @@ async function main() {
     },
   })
 
-  await prisma.activity.create({
-    data: {
-      dailyLogId: dailyLog.id,
-      companyId: company.id,
-      description: 'Concretagem da laje do 3º pavimento — Bloco A',
-      location: 'Bloco A, 3º Pavimento',
-      quantity: 45.5,
-      unit: 'm³',
-      progress: 100,
-      order: 1,
-      createdById: gestorUser.id,
-    },
-  })
+  // Só cria se ainda não existir (evita duplicação em re-seeds)
+  const existingActivities = await prisma.activity.count({ where: { dailyLogId: dailyLog.id } })
+  if (existingActivities === 0) {
+    await prisma.activity.create({
+      data: {
+        dailyLogId: dailyLog.id, companyId: company.id,
+        description: 'Concretagem da laje do 3º pavimento — Bloco A',
+        location: 'Bloco A, 3º Pavimento', quantity: 45.5, unit: 'm³', progress: 100,
+        order: 1, createdById: gestorUser.id,
+      },
+    })
+    await prisma.labor.create({ data: { dailyLogId: dailyLog.id, companyId: company.id, role: 'Pedreiro', quantity: 12, shift: 'INTEGRAL' } })
+    await prisma.labor.create({ data: { dailyLogId: dailyLog.id, companyId: company.id, role: 'Armador', quantity: 8, shift: 'INTEGRAL' } })
+    await prisma.material.create({ data: { dailyLogId: dailyLog.id, companyId: company.id, name: 'Concreto usinado fck 25 MPa', quantity: 45.5, unit: 'm³' } })
+    await prisma.occurrence.create({
+      data: {
+        dailyLogId: dailyLog.id, companyId: company.id, type: 'OBSERVACAO', severity: 'BAIXA',
+        description: 'Caminhão betoneira com atraso de 30 minutos',
+        actionTaken: 'Reorganizado o cronograma da tarde.', isResolved: true,
+        resolvedAt: new Date('2025-01-10T14:00:00Z'), createdById: gestorUser.id,
+      },
+    })
+  }
+  console.log('✅ Diário demo pronto')
 
-  await prisma.labor.create({
-    data: {
-      dailyLogId: dailyLog.id,
-      companyId: company.id,
-      role: 'Pedreiro',
-      quantity: 12,
-      shift: 'INTEGRAL',
-    },
-  })
-
-  await prisma.labor.create({
-    data: {
-      dailyLogId: dailyLog.id,
-      companyId: company.id,
-      role: 'Armador',
-      quantity: 8,
-      shift: 'INTEGRAL',
-    },
-  })
-
-  await prisma.material.create({
-    data: {
-      dailyLogId: dailyLog.id,
-      companyId: company.id,
-      name: 'Concreto usinado fck 25 MPa',
-      quantity: 45.5,
-      unit: 'm³',
-    },
-  })
-
-  await prisma.occurrence.create({
-    data: {
-      dailyLogId: dailyLog.id,
-      companyId: company.id,
-      type: 'OBSERVACAO',
-      severity: 'BAIXA',
-      description: 'Caminhão betoneira com atraso de 30 minutos',
-      actionTaken: 'Reorganizado o cronograma da tarde. Sem impacto no prazo.',
-      isResolved: true,
-      resolvedAt: new Date('2025-01-10T14:00:00Z'),
-      createdById: gestorUser.id,
-    },
-  })
-  console.log('✅ Diário demo criado com atividades, mão de obra, materiais e ocorrências')
-
-  console.log('\n🎉 Seed concluído com sucesso!\n')
-  console.log('📋 Credenciais de acesso:')
-  console.log('  SUPER_ADMIN:    superadmin@diariobras.com     / SuperAdmin@2025')
-  console.log('  ADMIN_EMPRESA:  admin@construtora-demo.com    / Admin@2025')
-  console.log('  GESTOR_OBRA:    gestor@construtora-demo.com   / Gestor@2025')
-  console.log('  COLABORADOR:    colaborador@construtora-demo.com / Colab@2025')
-  console.log('  CLIENTE_SINDICO: sindico@condominio-demo.com  / Cliente@2025')
+  console.log('\n🎉 Seed concluído!\n')
+  console.log('📋 Credenciais:')
+  console.log('  SUPER_ADMIN:     superadmin@diariobras.com      / SuperAdmin@2025')
+  console.log('  ADMIN_EMPRESA:   admin@construtora-demo.com     / Admin@2025')
+  console.log('  GESTOR_OBRA:     gestor@construtora-demo.com    / Gestor@2025')
+  console.log('  COLABORADOR:     colaborador@construtora-demo.com / Colab@2025')
+  console.log('  CLIENTE_SINDICO: sindico@condominio-demo.com    / Cliente@2025')
+  console.log('\n📦 Obras demo:')
+  console.log('  • Edifício Aurora — Torre A  (COMPLETO, EM_ANDAMENTO)')
+  console.log('  • Residencial Bosque Verde   (COMPLETO, PLANEJAMENTO)')
+  console.log('  • Reforma Comercial Centro   (SIMPLES/INCOMPLETO) ← badge de aviso')
 }
 
 main()

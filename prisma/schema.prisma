@@ -81,6 +81,11 @@ enum OccurrenceSeverity {
   CRITICA
 }
 
+enum WorksiteRegistrationMode {
+  SIMPLE
+  COMPLETE
+}
+
 enum AttachmentEntityType {
   DAILY_LOG
   ACTIVITY
@@ -118,6 +123,7 @@ model Company {
   auditLogs     AuditLog[]
   inviteTokens  InviteToken[]
   worksiteUsers WorksiteUser[]
+  worksiteGroups WorksiteGroup[]
 }
 
 model User {
@@ -186,40 +192,64 @@ model InviteToken {
   @@index([companyId])
 }
 
+model WorksiteGroup {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worksites Worksite[]
+
+  @@index([companyId])
+}
+
 model Worksite {
-  id              String         @id @default(uuid())
-  companyId       String
-  name            String         @db.VarChar(255)
-  address         String         @db.VarChar(500)
-  neighborhood    String?        @db.VarChar(255)
-  city            String         @db.VarChar(255)
-  state           String         @db.Char(2)
-  cep             String         @db.VarChar(10)
-  lat             Decimal?       @db.Decimal(10, 8)
-  lng             Decimal?       @db.Decimal(11, 8)
-  artNumber       String?        @db.VarChar(50)
-  artDocumentUrl  String?
-  responsibleName String         @db.VarChar(255)
-  responsibleCrea String?        @db.VarChar(50)
-  startDate       DateTime       @db.Date
-  endDateForecast DateTime?      @db.Date
-  endDateActual   DateTime?      @db.Date
-  status          WorksiteStatus @default(PLANEJAMENTO)
-  description     String?
-  clientName      String?        @db.VarChar(255)
-  contractNumber  String?        @db.VarChar(100)
-  totalArea       Decimal?       @db.Decimal(10, 2)
-  createdById     String
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id               String                   @id @default(uuid())
+  companyId        String
+  name             String                   @db.VarChar(255)
+  // Address fields — optional to support simple registration
+  address          String?                  @db.VarChar(500)
+  neighborhood     String?                  @db.VarChar(255)
+  city             String?                  @db.VarChar(255)
+  state            String?                  @db.Char(2)
+  cep              String?                  @db.VarChar(10)
+  lat              Decimal?                 @db.Decimal(10, 8)
+  lng              Decimal?                 @db.Decimal(11, 8)
+  artNumber        String?                  @db.VarChar(50)
+  artDocumentUrl   String?
+  // Responsible — optional to support simple registration
+  responsibleName  String?                  @db.VarChar(255)
+  responsibleCrea  String?                  @db.VarChar(50)
+  // Dates — optional to support simple registration
+  startDate        DateTime?                @db.Date
+  endDateForecast  DateTime?                @db.Date
+  endDateActual    DateTime?                @db.Date
+  status           WorksiteStatus           @default(PLANEJAMENTO)
+  description      String?
+  clientName       String?                  @db.VarChar(255)
+  contractNumber   String?                  @db.VarChar(100)
+  contractType     String?                  @db.VarChar(100)
+  totalArea        Decimal?                 @db.Decimal(10, 2)
+  // Progressive registration fields
+  registrationMode WorksiteRegistrationMode @default(SIMPLE)
+  isProfileComplete Boolean                 @default(false)
+  hasTaskList      Boolean                  @default(false)
+  groupId          String?
+  createdById      String
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   company       Company        @relation(fields: [companyId], references: [id])
+  group         WorksiteGroup? @relation(fields: [groupId], references: [id])
   createdBy     User           @relation("WorksiteCreatedBy", fields: [createdById], references: [id])
   worksiteUsers WorksiteUser[]
   dailyLogs     DailyLog[]
 
   @@index([companyId])
   @@index([companyId, status])
+  @@index([companyId, isProfileComplete])
 }
 
 model WorksiteUser {

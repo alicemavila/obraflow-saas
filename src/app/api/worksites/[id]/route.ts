@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
-import { ForbiddenError, NotFoundError, assertSameTenant } from '@/lib/permissions'
-import { updateWorksiteSchema } from '@/lib/validations/worksite'
+import { ForbiddenError, NotFoundError, BusinessError, assertSameTenant } from '@/lib/permissions'
+import { updateWorksiteSchema, calculateWorksiteProfileCompletion } from '@/lib/validations/worksite'
 import { logAuditEvent } from '@/lib/audit'
 
 async function getWorksiteOrThrow(id: string, companyId?: string) {
@@ -22,6 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       where: { id: params.id },
       include: {
         createdBy: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true } },
         worksiteUsers: {
           include: { user: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } } },
         },
@@ -43,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const user = await getCurrentUser()
     if (!['SUPER_ADMIN', 'ADMIN_EMPRESA'].includes(user.role)) throw new ForbiddenError()
 
-    const worksite = await getWorksiteOrThrow(
+    const existing = await getWorksiteOrThrow(
       params.id,
       user.role !== 'SUPER_ADMIN' ? user.companyId : undefined
     )
@@ -51,22 +52,64 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json()
     const data = updateWorksiteSchema.parse(body)
 
+    // Valida groupId no tenant
+    if (data.groupId) {
+      const group = await prisma.worksiteGroup.findFirst({
+        where: { id: data.groupId, companyId: existing.companyId },
+        select: { id: true },
+      })
+      if (!group) throw new BusinessError('Grupo não encontrado nesta empresa', 'GROUP_NOT_FOUND')
+    }
+
+    // Merge incoming data with existing to recalculate profile completion
+    const mergedName = data.name ?? existing.name
+    const mergedStatus = data.status ?? existing.status
+    const mergedResponsibleName = data.responsibleName !== undefined ? data.responsibleName : existing.responsibleName
+    const mergedStartDate = data.startDate !== undefined ? data.startDate : existing.startDate
+    const mergedRegistrationMode = data.registrationMode ?? existing.registrationMode
+
+    const isProfileComplete = calculateWorksiteProfileCompletion({
+      name: mergedName,
+      status: mergedStatus,
+      responsibleName: mergedResponsibleName,
+      startDate: mergedStartDate,
+      registrationMode: mergedRegistrationMode,
+    })
+
     const updated = await prisma.worksite.update({
       where: { id: params.id },
       data: {
-        ...data,
-        ...(data.startDate && { startDate: new Date(data.startDate) }),
-        ...(data.endDateForecast && { endDateForecast: new Date(data.endDateForecast) }),
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.status !== undefined && { status: data.status }),
+        ...(data.registrationMode !== undefined && { registrationMode: data.registrationMode }),
+        ...(data.responsibleName !== undefined && { responsibleName: data.responsibleName || null }),
+        ...(data.startDate !== undefined && { startDate: data.startDate ? new Date(data.startDate) : null }),
+        ...(data.endDateForecast !== undefined && { endDateForecast: data.endDateForecast ? new Date(data.endDateForecast) : null }),
+        ...(data.address !== undefined && { address: data.address || null }),
+        ...(data.neighborhood !== undefined && { neighborhood: data.neighborhood || null }),
+        ...(data.city !== undefined && { city: data.city || null }),
+        ...(data.state !== undefined && { state: data.state || null }),
+        ...(data.cep !== undefined && { cep: data.cep || null }),
+        ...(data.artNumber !== undefined && { artNumber: data.artNumber || null }),
+        ...(data.responsibleCrea !== undefined && { responsibleCrea: data.responsibleCrea || null }),
+        ...(data.description !== undefined && { description: data.description || null }),
+        ...(data.clientName !== undefined && { clientName: data.clientName || null }),
+        ...(data.contractNumber !== undefined && { contractNumber: data.contractNumber || null }),
+        ...(data.contractType !== undefined && { contractType: data.contractType || null }),
+        ...(data.totalArea !== undefined && { totalArea: data.totalArea ?? null }),
+        ...(data.groupId !== undefined && { groupId: data.groupId || null }),
+        ...(data.hasTaskList !== undefined && { hasTaskList: data.hasTaskList }),
+        isProfileComplete,
       },
     })
 
     await logAuditEvent({
       userId: user.id,
-      companyId: worksite.companyId,
+      companyId: existing.companyId,
       action: 'worksite.updated',
       entityType: 'Worksite',
       entityId: params.id,
-      payload: data as Record<string, unknown>,
+      payload: { ...data as Record<string, unknown>, isProfileComplete },
       req,
     })
 

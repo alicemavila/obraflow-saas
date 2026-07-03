@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, created, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
-import { ForbiddenError, ConflictError } from '@/lib/permissions'
-import { createWorksiteSchema } from '@/lib/validations/worksite'
+import { ForbiddenError, ConflictError, BusinessError } from '@/lib/permissions'
+import { createWorksiteSchema, calculateWorksiteProfileCompletion } from '@/lib/validations/worksite'
 import { logAuditEvent } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
@@ -16,19 +16,11 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status') ?? undefined
     const city = searchParams.get('city') ?? undefined
     const search = searchParams.get('search') ?? undefined
+    const incomplete = searchParams.get('incomplete')
 
-    // CLIENTE_SINDICO vê apenas obras associadas
+    // Restrição por associação para GESTOR/COLABORADOR/CLIENTE
     let worksiteIdsFilter: string[] | undefined
-    if (user.role === 'CLIENTE_SINDICO') {
-      const assocs = await prisma.worksiteUser.findMany({
-        where: { userId: user.id },
-        select: { worksiteId: true },
-      })
-      worksiteIdsFilter = assocs.map((a) => a.worksiteId)
-    }
-
-    // GESTOR/COLABORADOR veem apenas obras associadas
-    if (user.role === 'GESTOR_OBRA' || user.role === 'COLABORADOR') {
+    if (['CLIENTE_SINDICO', 'GESTOR_OBRA', 'COLABORADOR'].includes(user.role)) {
       const assocs = await prisma.worksiteUser.findMany({
         where: { userId: user.id },
         select: { worksiteId: true },
@@ -42,6 +34,8 @@ export async function GET(req: NextRequest) {
       ...(status && { status: status as never }),
       ...(city && { city: { contains: city, mode: 'insensitive' as const } }),
       ...(search && { name: { contains: search, mode: 'insensitive' as const } }),
+      ...(incomplete === 'true' && { isProfileComplete: false }),
+      ...(incomplete === 'false' && { isProfileComplete: true }),
     }
 
     const [total, worksites] = await prisma.$transaction([
@@ -58,7 +52,10 @@ export async function GET(req: NextRequest) {
           endDateForecast: true,
           responsibleName: true,
           clientName: true,
+          registrationMode: true,
+          isProfileComplete: true,
           createdAt: true,
+          group: { select: { id: true, name: true } },
           _count: { select: { dailyLogs: true } },
         },
         skip: (page - 1) * perPage,
@@ -86,9 +83,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createWorksiteSchema.parse(body)
 
-    const companyId = user.role === 'SUPER_ADMIN'
-      ? (body.companyId as string ?? user.companyId!)
-      : user.companyId!
+    const companyId =
+      user.role === 'SUPER_ADMIN'
+        ? ((body.companyId as string) ?? user.companyId!)
+        : user.companyId!
+
+    // Valida groupId no mesmo tenant (nunca confiar no frontend)
+    if (data.groupId) {
+      const group = await prisma.worksiteGroup.findFirst({
+        where: { id: data.groupId, companyId },
+        select: { id: true },
+      })
+      if (!group) {
+        throw new BusinessError('Grupo não encontrado nesta empresa', 'GROUP_NOT_FOUND')
+      }
+    }
 
     // Verifica limite do plano
     const company = await prisma.company.findUnique({
@@ -96,9 +105,7 @@ export async function POST(req: NextRequest) {
       include: {
         _count: {
           select: {
-            worksites: {
-              where: { status: { notIn: ['CONCLUIDA', 'CANCELADA'] } },
-            },
+            worksites: { where: { status: { notIn: ['CONCLUIDA', 'CANCELADA'] } } },
           },
         },
       },
@@ -110,12 +117,40 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Calcula se o cadastro está completo
+    const isProfileComplete = calculateWorksiteProfileCompletion({
+      name: data.name,
+      status: data.status,
+      responsibleName: data.responsibleName,
+      startDate: data.startDate,
+      registrationMode: data.registrationMode,
+    })
+
     const worksite = await prisma.worksite.create({
       data: {
         companyId,
-        ...data,
-        startDate: new Date(data.startDate),
-        endDateForecast: data.endDateForecast ? new Date(data.endDateForecast) : undefined,
+        name: data.name,
+        status: data.status,
+        registrationMode: data.registrationMode,
+        isProfileComplete,
+        hasTaskList: data.hasTaskList ?? false,
+        groupId: data.groupId ?? null,
+        // Campos opcionais
+        address: data.address || null,
+        neighborhood: data.neighborhood || null,
+        city: data.city || null,
+        state: data.state || null,
+        cep: data.cep || null,
+        artNumber: data.artNumber || null,
+        responsibleName: data.responsibleName || null,
+        responsibleCrea: data.responsibleCrea || null,
+        startDate: data.startDate ? new Date(data.startDate) : null,
+        endDateForecast: data.endDateForecast ? new Date(data.endDateForecast) : null,
+        description: data.description || null,
+        clientName: data.clientName || null,
+        contractNumber: data.contractNumber || null,
+        contractType: data.contractType || null,
+        totalArea: data.totalArea ?? null,
         createdById: user.id,
       },
     })
@@ -126,7 +161,7 @@ export async function POST(req: NextRequest) {
       action: 'worksite.created',
       entityType: 'Worksite',
       entityId: worksite.id,
-      payload: { name: worksite.name, status: worksite.status },
+      payload: { name: worksite.name, status: worksite.status, registrationMode: worksite.registrationMode, isProfileComplete },
       req,
     })
 
