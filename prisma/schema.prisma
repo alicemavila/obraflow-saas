@@ -124,6 +124,7 @@ model Company {
   inviteTokens  InviteToken[]
   worksiteUsers WorksiteUser[]
   worksiteGroups WorksiteGroup[]
+  preCadastros  PreCadastro[]
 }
 
 model User {
@@ -463,4 +464,22 @@ model AuditLog {
   @@index([action])
   @@index([entityType, entityId])
   @@index([createdAt(sort: Desc)])
+}
+
+// ─── Pré-cadastros genéricos por empresa ─────────────────────────────────────
+// Uma única tabela com campo "category" para evitar N migrations extras no MVP.
+// Categorias: mao-de-obra | equipamentos | tipos-ocorrencia | checklist | modelos-relatorio
+
+model PreCadastro {
+  id          String   @id @default(uuid())
+  companyId   String
+  category    String   @db.VarChar(50)
+  name        String   @db.VarChar(255)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, category])
 }

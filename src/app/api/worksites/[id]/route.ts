@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json()
     const data = updateWorksiteSchema.parse(body)
 
-    // Valida groupId no tenant
+    // Validate groupId belongs to same company
     if (data.groupId) {
       const group = await prisma.worksiteGroup.findFirst({
         where: { id: data.groupId, companyId: existing.companyId },
@@ -61,19 +61,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (!group) throw new BusinessError('Grupo não encontrado nesta empresa', 'GROUP_NOT_FOUND')
     }
 
-    // Merge incoming data with existing to recalculate profile completion
+    // Merge with existing to recalculate isProfileComplete
     const mergedName = data.name ?? existing.name
     const mergedStatus = data.status ?? existing.status
-    const mergedResponsibleName = data.responsibleName !== undefined ? data.responsibleName : existing.responsibleName
+    const mergedGroupId = data.groupId !== undefined ? data.groupId : existing.groupId
+    const mergedResponsible = data.responsibleName !== undefined ? data.responsibleName : existing.responsibleName
     const mergedStartDate = data.startDate !== undefined ? data.startDate : existing.startDate
-    const mergedRegistrationMode = data.registrationMode ?? existing.registrationMode
+    const mergedEndDate = data.endDateForecast !== undefined ? data.endDateForecast : existing.endDateForecast
+    const mergedMode = data.registrationMode ?? existing.registrationMode
 
     const isProfileComplete = calculateWorksiteProfileCompletion({
       name: mergedName,
       status: mergedStatus,
-      responsibleName: mergedResponsibleName,
+      groupId: mergedGroupId,
+      responsibleName: mergedResponsible,
       startDate: mergedStartDate,
-      registrationMode: mergedRegistrationMode,
+      endDateForecast: mergedEndDate,
+      registrationMode: mergedMode,
     })
 
     const updated = await prisma.worksite.update({
