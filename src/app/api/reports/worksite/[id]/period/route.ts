@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { handleError, ok } from '@/lib/api-response'
+import { handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
 import {
   assertSameTenant, isWorksiteAssociated,
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       req,
     })
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

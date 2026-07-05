@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, created, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
@@ -117,12 +117,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Calcula se o cadastro está completo
+    // Calcula se o cadastro está completo (inclui groupId e endDateForecast)
     const isProfileComplete = calculateWorksiteProfileCompletion({
       name: data.name,
       status: data.status,
-      responsibleName: data.responsibleName,
-      startDate: data.startDate,
+      groupId: data.groupId || null,
+      responsibleName: data.responsibleName || null,
+      startDate: data.startDate || null,
+      endDateForecast: data.endDateForecast || null,
       registrationMode: data.registrationMode,
     })
 

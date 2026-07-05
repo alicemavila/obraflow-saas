@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
@@ -24,8 +24,14 @@ export async function PATCH(
     const body = await req.json()
     const data = createActivitySchema.partial().parse(body)
 
+    const activity = await prisma.activity.findFirst({
+      where: { id: params.actId, dailyLogId: params.id },
+      select: { id: true },
+    })
+    if (!activity) throw new NotFoundError('Atividade não encontrada neste diário')
+
     const updated = await prisma.activity.update({
-      where: { id: params.actId },
+      where: { id: activity.id },
       data,
     })
     return ok(updated)
@@ -50,7 +56,11 @@ export async function DELETE(
       throw new BusinessError('Diário não pode ser editado', 'DIARY_ALREADY_APPROVED')
     }
 
-    await prisma.activity.delete({ where: { id: params.actId } })
+    const deleted = await prisma.activity.deleteMany({
+      where: { id: params.actId, dailyLogId: params.id },
+    })
+    if (deleted.count === 0) throw new NotFoundError('Atividade não encontrada neste diário')
+
     return ok(null, 'Atividade removida')
   } catch (err) {
     return handleError(err)

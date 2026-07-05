@@ -7,15 +7,20 @@ const nameSchema = z.string().min(2, 'Nome deve ter ao menos 2 caracteres').max(
 
 const statusSchema = z.nativeEnum(WorksiteStatus, { required_error: 'Status é obrigatório' })
 
-// groupId obrigatório no formulário (UUID válido)
-const groupIdRequiredSchema = z.string().uuid('Selecione um grupo válido')
-
 const optionalAddress = {
-  cep: z.string().regex(/^\d{5}-\d{3}$/, 'CEP inválido (ex: 01310-100)').optional().or(z.literal('')),
+  cep: z
+    .string()
+    .regex(/^\d{5}-\d{3}$/, 'CEP inválido (ex: 01310-100)')
+    .optional()
+    .or(z.literal('')),
   address: z.string().max(500).optional(),
   neighborhood: z.string().max(255).optional(),
   city: z.string().max(255).optional(),
-  state: z.string().length(2, 'Estado deve ter 2 caracteres (ex: SP)').optional().or(z.literal('')),
+  state: z
+    .string()
+    .max(2, 'Estado deve ter 2 caracteres (ex: SP)')
+    .optional()
+    .or(z.literal('')),
 }
 
 const optionalTechnical = {
@@ -29,67 +34,94 @@ const optionalTechnical = {
 }
 
 // ─── A) Cadastro Simples ──────────────────────────────────────────────────────
-// Obrigatórios: name, status, groupId
-// Opcionais: hasTaskList
+// Obrigatórios no FORMULÁRIO: name, status, groupId
+// A API aceita groupId como opcional para não quebrar obras legadas sem grupo.
 
 export const createSimpleWorksiteSchema = z.object({
   name: nameSchema,
   status: statusSchema,
-  groupId: groupIdRequiredSchema,
+  groupId: z.string().uuid('Selecione um grupo válido').optional(),
   hasTaskList: z.boolean().optional().default(false),
-  registrationMode: z.literal(WorksiteRegistrationMode.SIMPLE).default(WorksiteRegistrationMode.SIMPLE),
+  registrationMode: z
+    .literal(WorksiteRegistrationMode.SIMPLE)
+    .default(WorksiteRegistrationMode.SIMPLE),
 })
 
 // ─── B) Cadastro Completo ─────────────────────────────────────────────────────
-// Obrigatórios: name, status, groupId, responsibleName, startDate, endDateForecast
+// Obrigatórios: name, status, responsibleName, startDate, endDateForecast
+// groupId: obrigatório no formulário; opcional na API para compatibilidade
 
 export const createCompleteWorksiteSchema = z
   .object({
     name: nameSchema,
     status: statusSchema,
-    groupId: groupIdRequiredSchema,
+    groupId: z.string().uuid('Selecione um grupo válido').optional(),
     responsibleName: z.string().min(2, 'Responsável técnico obrigatório').max(255),
-    startDate: z.string({ required_error: 'Data de início obrigatória' }).min(1, 'Data de início obrigatória'),
-    endDateForecast: z.string({ required_error: 'Previsão de término obrigatória' }).min(1, 'Previsão de término obrigatória'),
+    startDate: z
+      .string({ required_error: 'Data de início obrigatória' })
+      .min(1, 'Data de início obrigatória'),
+    endDateForecast: z
+      .string({ required_error: 'Previsão de término obrigatória' })
+      .min(1, 'Previsão de término obrigatória'),
     hasTaskList: z.boolean().optional().default(false),
-    registrationMode: z.literal(WorksiteRegistrationMode.COMPLETE).default(WorksiteRegistrationMode.COMPLETE),
+    registrationMode: z
+      .literal(WorksiteRegistrationMode.COMPLETE)
+      .default(WorksiteRegistrationMode.COMPLETE),
     ...optionalAddress,
     ...optionalTechnical,
   })
-  .refine(
-    (d) => new Date(d.startDate) <= new Date(d.endDateForecast),
-    { message: 'Previsão de término não pode ser anterior à data de início', path: ['endDateForecast'] }
-  )
+  .refine((d) => new Date(d.startDate) <= new Date(d.endDateForecast), {
+    message: 'Previsão de término não pode ser anterior à data de início',
+    path: ['endDateForecast'],
+  })
 
 // ─── Schema unificado para API ────────────────────────────────────────────────
-// Aceita ambos os modos; validações condicionais por registrationMode.
+// Todos os campos de negócio são opcionais neste schema base.
+// Validações condicionais refinam por registrationMode.
 
 export const createWorksiteSchema = z
   .object({
     name: nameSchema,
     status: statusSchema,
-    groupId: groupIdRequiredSchema,
-    registrationMode: z.nativeEnum(WorksiteRegistrationMode).default(WorksiteRegistrationMode.SIMPLE),
-    responsibleName: z.string().max(255).optional(),
+    // groupId: opcional na API — obrigatório é responsabilidade do formulário
+    groupId: z.string().uuid('Grupo inválido').optional().or(z.literal('')),
+    registrationMode: z
+      .nativeEnum(WorksiteRegistrationMode)
+      .default(WorksiteRegistrationMode.SIMPLE),
+    // Campos de gestão — todos opcionais na base
+    responsibleName: z.string().max(255).optional().or(z.literal('')),
     startDate: z.string().optional(),
     endDateForecast: z.string().optional(),
     hasTaskList: z.boolean().optional().default(false),
     ...optionalAddress,
     ...optionalTechnical,
   })
+  // Validar datas apenas quando ambas presentes
   .refine(
     (d) => {
       if (!d.endDateForecast || !d.startDate) return true
       return new Date(d.startDate) <= new Date(d.endDateForecast)
     },
-    { message: 'Previsão de término não pode ser anterior à data de início', path: ['endDateForecast'] }
+    {
+      message: 'Previsão de término não pode ser anterior à data de início',
+      path: ['endDateForecast'],
+    }
   )
+  // Cadastro COMPLETE: responsável + startDate + endDateForecast obrigatórios
   .refine(
     (d) => {
       if (d.registrationMode !== WorksiteRegistrationMode.COMPLETE) return true
-      return !!d.responsibleName?.trim() && !!d.startDate && !!d.endDateForecast
+      return (
+        !!d.responsibleName?.trim() &&
+        !!d.startDate?.trim() &&
+        !!d.endDateForecast?.trim()
+      )
     },
-    { message: 'Cadastro completo requer responsável, data de início e previsão de término', path: ['responsibleName'] }
+    {
+      message:
+        'Cadastro completo requer responsável técnico, data de início e previsão de término',
+      path: ['responsibleName'],
+    }
   )
 
 // ─── Schema de atualização ────────────────────────────────────────────────────
@@ -98,9 +130,9 @@ export const updateWorksiteSchema = z
   .object({
     name: nameSchema.optional(),
     status: statusSchema.optional(),
-    groupId: z.string().uuid('Grupo inválido').optional(),
+    groupId: z.string().uuid('Grupo inválido').optional().or(z.literal('')),
     registrationMode: z.nativeEnum(WorksiteRegistrationMode).optional(),
-    responsibleName: z.string().max(255).optional(),
+    responsibleName: z.string().max(255).optional().or(z.literal('')),
     startDate: z.string().optional(),
     endDateForecast: z.string().optional(),
     hasTaskList: z.boolean().optional(),
@@ -112,14 +144,20 @@ export const updateWorksiteSchema = z
       if (!d.endDateForecast || !d.startDate) return true
       return new Date(d.startDate) <= new Date(d.endDateForecast)
     },
-    { message: 'Previsão de término não pode ser anterior à data de início', path: ['endDateForecast'] }
+    {
+      message: 'Previsão de término não pode ser anterior à data de início',
+      path: ['endDateForecast'],
+    }
   )
 
-export const updateWorksiteStatusSchema = z.object({ status: z.nativeEnum(WorksiteStatus) })
+export const updateWorksiteStatusSchema = z.object({
+  status: z.nativeEnum(WorksiteStatus),
+})
 
 // ─── calculateWorksiteProfileCompletion ──────────────────────────────────────
-// SIMPLE → sempre false
-// COMPLETE → true apenas quando name + status + groupId + responsibleName + startDate + endDateForecast
+// SIMPLE  → sempre false (obra incompleta por definição)
+// COMPLETE → true apenas quando TODOS os campos essenciais estão presentes:
+//            name + status + groupId + responsibleName + startDate + endDateForecast
 
 export function calculateWorksiteProfileCompletion(data: {
   name?: string | null
@@ -133,11 +171,11 @@ export function calculateWorksiteProfileCompletion(data: {
   if (data.registrationMode !== WorksiteRegistrationMode.COMPLETE) return false
   return Boolean(
     data.name?.trim() &&
-    data.status &&
-    data.groupId?.trim() &&
-    data.responsibleName?.trim() &&
-    data.startDate &&
-    data.endDateForecast
+      data.status &&
+      data.groupId?.trim() &&
+      data.responsibleName?.trim() &&
+      data.startDate &&
+      data.endDateForecast
   )
 }
 

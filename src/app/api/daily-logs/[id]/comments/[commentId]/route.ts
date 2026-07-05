@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
@@ -8,7 +8,9 @@ import { createCommentSchema } from '@/lib/validations/daily-log'
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; commentId: string } }) {
   try {
     const user = await getCurrentUser()
-    const comment = await prisma.comment.findUnique({ where: { id: params.commentId } })
+    const comment = await prisma.comment.findFirst({
+      where: { id: params.commentId, entityType: 'DAILY_LOG', entityId: params.id },
+    })
     if (!comment || comment.isDeleted) throw new NotFoundError('Comentário não encontrado')
     if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, comment.companyId)
 
@@ -29,7 +31,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string; commentId: string } }) {
   try {
     const user = await getCurrentUser()
-    const comment = await prisma.comment.findUnique({ where: { id: params.commentId } })
+    const comment = await prisma.comment.findFirst({
+      where: { id: params.commentId, entityType: 'DAILY_LOG', entityId: params.id },
+    })
     if (!comment || comment.isDeleted) throw new NotFoundError('Comentário não encontrado')
     if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, comment.companyId)
 

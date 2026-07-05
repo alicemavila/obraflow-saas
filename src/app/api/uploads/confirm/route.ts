@@ -1,9 +1,19 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { created, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
 import { ForbiddenError, BusinessError } from '@/lib/permissions'
-import { generatePresignedDownloadUrl, ALLOWED_IMAGE_TYPES } from '@/lib/s3'
+import {
+  generatePresignedDownloadUrl,
+  ALLOWED_IMAGE_TYPES,
+  ALLOWED_TYPES,
+  validateMimeType,
+  validateFileSize,
+} from '@/lib/s3'
+import {
+  authorizeAttachmentTarget,
+  assertStorageKeyMatchesTarget,
+} from '@/lib/attachment-authorization'
 import { logAuditEvent } from '@/lib/audit'
 import { z } from 'zod'
 import { AttachmentEntityType } from '@prisma/client'
@@ -26,11 +36,25 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = schema.parse(body)
 
+    if (!validateMimeType(data.mimeType)) {
+      throw new BusinessError(
+        `Tipo de arquivo não permitido. Tipos aceitos: ${ALLOWED_TYPES.join(', ')}`,
+        'UNSUPPORTED_FILE_TYPE'
+      )
+    }
+
+    if (!validateFileSize(data.mimeType, data.fileSize)) {
+      throw new BusinessError('Arquivo excede o tamanho máximo permitido', 'FILE_TOO_LARGE')
+    }
+
+    const target = await authorizeAttachmentTarget(user, data.entityType, data.entityId)
+    assertStorageKeyMatchesTarget(data.storageKey, target)
+
     const attachment = await prisma.attachment.create({
       data: {
-        companyId: user.companyId ?? '',
-        entityType: data.entityType,
-        entityId: data.entityId,
+        companyId: target.companyId,
+        entityType: target.entityType,
+        entityId: target.entityId,
         fileName: data.fileName,
         fileSize: data.fileSize,
         mimeType: data.mimeType,
@@ -46,7 +70,7 @@ export async function POST(req: NextRequest) {
       const photo = await prisma.photo.create({
         data: {
           attachmentId: attachment.id,
-          companyId: user.companyId ?? '',
+          companyId: target.companyId,
           caption: data.caption,
         },
       })
@@ -57,10 +81,10 @@ export async function POST(req: NextRequest) {
 
     await logAuditEvent({
       userId: user.id,
-      companyId: user.companyId,
+      companyId: target.companyId,
       action: 'attachment.uploaded',
-      entityType: data.entityType,
-      entityId: data.entityId,
+      entityType: target.entityType,
+      entityId: target.entityId,
       payload: { fileName: data.fileName, mimeType: data.mimeType, fileSize: data.fileSize },
       req,
     })

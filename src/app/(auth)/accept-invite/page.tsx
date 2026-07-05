@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { AcceptInviteForm } from '@/components/auth/AcceptInviteForm'
 import { Building2 } from 'lucide-react'
 
@@ -16,7 +17,9 @@ export default function AcceptInvitePage() {
           <p className="text-gray-500 text-sm mt-1">Crie sua senha para acessar o sistema</p>
         </div>
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          <AcceptInviteForm />
+          <Suspense fallback={null}>
+            <AcceptInviteForm />
+          </Suspense>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { LoginForm } from '@/components/auth/LoginForm'
 import { Building2 } from 'lucide-react'
 
@@ -20,7 +21,9 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Acesse sua conta</h2>
-          <LoginForm />
+          <Suspense fallback={null}>
+            <LoginForm />
+          </Suspense>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">

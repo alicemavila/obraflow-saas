@@ -3,7 +3,6 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { notFound, redirect } from 'next/navigation'
 import { WorksiteForm } from '@/components/domain/worksite/WorksiteForm'
-import { ChevronLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export const metadata: Metadata = { title: 'Editar Obra' }

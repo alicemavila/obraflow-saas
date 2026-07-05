@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { ResetPasswordForm } from '@/components/auth/ResetPasswordForm'
 import { Building2 } from 'lucide-react'
 import Link from 'next/link'
@@ -16,7 +17,9 @@ export default function ResetPasswordPage() {
           <h1 className="text-2xl font-bold text-gray-900">Redefinir senha</h1>
         </div>
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          <ResetPasswordForm />
+          <Suspense fallback={null}>
+            <ResetPasswordForm />
+          </Suspense>
           <div className="mt-4 text-center">
             <Link href="/login" className="text-sm text-blue-600 hover:underline">Voltar para o login</Link>
           </div>

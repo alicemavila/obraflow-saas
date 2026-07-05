@@ -5,11 +5,7 @@ import { ReportsPanel } from '@/components/domain/reports/ReportsPanel'
 
 export const metadata: Metadata = { title: 'Relatórios — Portal Cliente' }
 
-export default async function ClientRelatoriosPage({
-  searchParams,
-}: {
-  searchParams: { worksiteId?: string }
-}) {
+export default async function ClientRelatoriosPage() {
   const session = await auth()
   const userId = session!.user.id
 

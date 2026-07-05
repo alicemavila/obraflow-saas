@@ -74,7 +74,7 @@ export function ActivitiesManager({ dailyLogId, initialItems, canEdit }: Props) 
       <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
         <CardTitle className="text-sm">Atividades ({items.length})</CardTitle>
         {canEdit && !showForm && (
-          <Button type="button" size="sm" variant="outline" onClick={() => setShowForm(true)}>
+          <Button type="button" size="sm" variant="outline" onClick={() => setShowForm(true)} data-testid="add-activity-button">
             <Plus className="w-4 h-4 mr-1" aria-hidden />Adicionar
           </Button>
         )}
@@ -142,7 +142,7 @@ export function ActivitiesManager({ dailyLogId, initialItems, canEdit }: Props) 
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" size="sm" variant="outline" onClick={() => { setShowForm(false); resetForm() }}>Cancelar</Button>
-              <Button type="button" size="sm" onClick={addActivity} disabled={saving}>
+              <Button type="button" size="sm" onClick={addActivity} disabled={saving} data-testid="submit-activity-button">
                 {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Adicionar
               </Button>
             </div>

@@ -1,8 +1,14 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, created, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
-import { ForbiddenError, NotFoundError, ConflictError, assertSameTenant } from '@/lib/permissions'
+import {
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  assertSameTenant,
+  isWorksiteAssociated,
+} from '@/lib/permissions'
 import { z } from 'zod'
 import { UserRole } from '@prisma/client'
 
@@ -21,6 +27,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const worksite = await prisma.worksite.findUnique({ where: { id: params.id } })
     if (!worksite) throw new NotFoundError('Obra não encontrada')
     if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, worksite.companyId)
+
+    if (!['SUPER_ADMIN', 'ADMIN_EMPRESA'].includes(user.role)) {
+      const associated = await isWorksiteAssociated(user, params.id)
+      if (!associated) throw new ForbiddenError()
+    }
 
     const users = await prisma.worksiteUser.findMany({
       where: { worksiteId: params.id },

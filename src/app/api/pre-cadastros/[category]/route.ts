@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { handleList, handleCreate, isValidCategory } from '@/lib/pre-cadastros'
 import { handleError } from '@/lib/api-response'
 import { BusinessError } from '@/lib/permissions'

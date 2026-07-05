@@ -8,11 +8,16 @@ import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { acceptInviteSchema, type AcceptInviteInput } from '@/lib/validations/user'
+import { acceptInviteBaseSchema } from '@/lib/validations/user'
 import { z } from 'zod'
 
-const formSchema = acceptInviteSchema.extend({ name: z.string().min(2, 'Nome obrigatório') })
-type FormInput = AcceptInviteInput & { name: string }
+const formSchema = acceptInviteBaseSchema
+  .extend({ name: z.string().min(2, 'Nome obrigatório') })
+  .refine((d) => d.password === d.confirmPassword, {
+    message: 'As senhas não conferem',
+    path: ['confirmPassword'],
+  })
+type FormInput = z.infer<typeof formSchema>
 
 export function AcceptInviteForm() {
   const router = useRouter()

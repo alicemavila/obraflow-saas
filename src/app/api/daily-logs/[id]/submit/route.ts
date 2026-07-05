@@ -1,8 +1,14 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
-import { assertSameTenant, ForbiddenError, NotFoundError, BusinessError } from '@/lib/permissions'
+import {
+  assertSameTenant,
+  isWorksiteAssociated,
+  ForbiddenError,
+  NotFoundError,
+  BusinessError,
+} from '@/lib/permissions'
 import { logAuditEvent } from '@/lib/audit'
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -18,6 +24,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     })
     if (!log) throw new NotFoundError('Diário não encontrado')
     if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, log.companyId)
+
+    const associated = await isWorksiteAssociated(user, log.worksiteId)
+    if (!associated) throw new ForbiddenError()
 
     if (log.status !== 'RASCUNHO' && log.status !== 'REJEITADO') {
       throw new BusinessError('Apenas diários em rascunho ou rejeitados podem ser submetidos', 'ALREADY_SUBMITTED')

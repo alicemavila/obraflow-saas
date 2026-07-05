@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
@@ -17,7 +17,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
     const body = await req.json()
     const data = createMaterialSchema.partial().parse(body)
-    const updated = await prisma.material.update({ where: { id: params.matId }, data })
+    const material = await prisma.material.findFirst({
+      where: { id: params.matId, dailyLogId: params.id },
+      select: { id: true },
+    })
+    if (!material) throw new NotFoundError('Material não encontrado neste diário')
+
+    const updated = await prisma.material.update({ where: { id: material.id }, data })
     return ok(updated)
   } catch (err) {
     return handleError(err)
@@ -34,7 +40,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     if (!canEditDailyLog(user, log.status, log.createdById)) {
       throw new BusinessError('Diário não pode ser editado', 'DIARY_ALREADY_APPROVED')
     }
-    await prisma.material.delete({ where: { id: params.matId } })
+    const deleted = await prisma.material.deleteMany({
+      where: { id: params.matId, dailyLogId: params.id },
+    })
+    if (deleted.count === 0) throw new NotFoundError('Material não encontrado neste diário')
+
     return ok(null, 'Material removido')
   } catch (err) {
     return handleError(err)

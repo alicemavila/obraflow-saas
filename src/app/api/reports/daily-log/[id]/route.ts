@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
@@ -46,7 +47,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       payload: { type: 'daily_log' }, req: _req,
     })
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

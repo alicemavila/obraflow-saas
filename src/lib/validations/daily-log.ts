@@ -1,8 +1,7 @@
 import { z } from 'zod'
 import { WeatherCondition, WorkShift, OccurrenceType, OccurrenceSeverity } from '@prisma/client'
 
-export const createDailyLogSchema = z
-  .object({
+const dailyLogBaseSchema = z.object({
     date: z.string().date('Data inválida (formato: YYYY-MM-DD)'),
     weatherMorning: z.nativeEnum(WeatherCondition).optional(),
     weatherAfternoon: z.nativeEnum(WeatherCondition).optional(),
@@ -11,7 +10,9 @@ export const createDailyLogSchema = z
     tempMax: z.number().min(-20).max(60).optional(),
     workedHours: z.number().min(0).max(24).optional(),
     notes: z.string().max(5000).optional(),
-  })
+})
+
+export const createDailyLogSchema = dailyLogBaseSchema
   .refine(
     (data) => {
       const today = new Date()
@@ -28,7 +29,7 @@ export const createDailyLogSchema = z
     { message: 'Temperatura mínima não pode ser maior que a máxima', path: ['tempMax'] }
   )
 
-export const updateDailyLogSchema = createDailyLogSchema.partial().omit({ date: true })
+export const updateDailyLogSchema = dailyLogBaseSchema.omit({ date: true }).partial()
 
 export const rejectDailyLogSchema = z.object({
   reason: z.string().min(10, 'Informe o motivo da rejeição (mínimo 10 caracteres)').max(1000),

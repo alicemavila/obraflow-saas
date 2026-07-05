@@ -23,6 +23,10 @@ const STATUS_VARIANTS: Record<string, 'muted' | 'warning' | 'success' | 'destruc
   RASCUNHO: 'muted', SUBMETIDO: 'warning', APROVADO: 'success', REJEITADO: 'destructive',
 }
 
+function decimalToNumber(value: { toNumber(): number } | null): number | null {
+  return value == null ? null : value.toNumber()
+}
+
 export default async function EditarDiarioPage({ params }: { params: { id: string } }) {
   const session = await auth()
   const user = session!.user
@@ -95,16 +99,31 @@ export default async function EditarDiarioPage({ params }: { params: { id: strin
           weatherMorning: log.weatherMorning,
           weatherAfternoon: log.weatherAfternoon,
           weatherEvening: log.weatherEvening,
-          tempMin: log.tempMin,
-          tempMax: log.tempMax,
-          workedHours: log.workedHours,
+          tempMin: decimalToNumber(log.tempMin),
+          tempMax: decimalToNumber(log.tempMax),
+          workedHours: decimalToNumber(log.workedHours),
           notes: log.notes,
         }}
       />
 
-      <ActivitiesManager dailyLogId={log.id} initialItems={log.activities} canEdit={editable} />
+      <ActivitiesManager
+        dailyLogId={log.id}
+        initialItems={log.activities.map((activity) => ({
+          ...activity,
+          progress: decimalToNumber(activity.progress),
+          quantity: decimalToNumber(activity.quantity),
+        }))}
+        canEdit={editable}
+      />
       <LaborManager dailyLogId={log.id} initialItems={log.laborRecords} canEdit={editable} />
-      <MaterialsManager dailyLogId={log.id} initialItems={log.materials} canEdit={editable} />
+      <MaterialsManager
+        dailyLogId={log.id}
+        initialItems={log.materials.map((material) => ({
+          ...material,
+          quantity: decimalToNumber(material.quantity) ?? 0,
+        }))}
+        canEdit={editable}
+      />
       <OccurrencesManager dailyLogId={log.id} initialItems={log.occurrences} canEdit={editable} />
 
       {canSubmitDailyLog(user) && <SubmitDiaryBar dailyLogId={log.id} status={log.status} />}

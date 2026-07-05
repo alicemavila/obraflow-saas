@@ -1,7 +1,8 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { created, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
 import { ForbiddenError, BusinessError } from '@/lib/permissions'
+import { authorizeAttachmentTarget } from '@/lib/attachment-authorization'
 import {
   generateStorageKey,
   generatePresignedUploadUrl,
@@ -39,10 +40,12 @@ export async function POST(req: NextRequest) {
       throw new BusinessError('Arquivo excede o tamanho máximo permitido', 'FILE_TOO_LARGE')
     }
 
+    const target = await authorizeAttachmentTarget(user, entityType, entityId)
+
     const storageKey = generateStorageKey(
-      user.companyId ?? 'shared',
+      target.companyId,
       entityType.toLowerCase().replace('_', '-'),
-      entityId,
+      target.entityId,
       fileName
     )
 

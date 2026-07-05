@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Document, Page, Text, View, StyleSheet, Font,
+  Document, Page, Text, View, StyleSheet,
 } from '@react-pdf/renderer'
 import { formatDate, formatDateTime } from '@/lib/pdf'
 import type { DailyLog, Activity, Labor, Material, Occurrence, Worksite, Company, User } from '@prisma/client'

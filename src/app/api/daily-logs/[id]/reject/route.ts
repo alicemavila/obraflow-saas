@@ -1,8 +1,14 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ok, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
-import { assertSameTenant, ForbiddenError, NotFoundError, BusinessError } from '@/lib/permissions'
+import {
+  assertSameTenant,
+  isWorksiteAssociated,
+  ForbiddenError,
+  NotFoundError,
+  BusinessError,
+} from '@/lib/permissions'
 import { rejectDailyLogSchema } from '@/lib/validations/daily-log'
 import { logAuditEvent } from '@/lib/audit'
 
@@ -16,6 +22,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const log = await prisma.dailyLog.findUnique({ where: { id: params.id } })
     if (!log) throw new NotFoundError('Diário não encontrado')
     if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, log.companyId)
+
+    const associated = await isWorksiteAssociated(user, log.worksiteId)
+    if (!associated) throw new ForbiddenError()
 
     if (log.status !== 'SUBMETIDO') {
       throw new BusinessError('Apenas diários submetidos podem ser rejeitados', 'INVALID_STATUS')

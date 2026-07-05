@@ -1,7 +1,6 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { Building2, LogOut } from 'lucide-react'
-import Link from 'next/link'
 import { signOut } from '@/lib/auth'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {

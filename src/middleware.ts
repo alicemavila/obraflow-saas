@@ -14,9 +14,6 @@ const PUBLIC_ROUTES = [
   '/terms',
 ]
 
-// Rotas exclusivas para CLIENTE_SINDICO
-const CLIENT_ROUTES = ['/client']
-
 // Rotas exclusivas para admins internos
 const ADMIN_ONLY_ROUTES = ['/admin/super']
 

@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { created, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'

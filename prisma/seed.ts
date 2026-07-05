@@ -254,6 +254,48 @@ async function main() {
   }
   console.log('✅ Diário demo pronto')
 
+  // ─── PRÉ-CADASTROS DEMO ───────────────────────────────────────────────────
+  const preCadastros: { category: string; name: string }[] = [
+    // Mão de obra
+    { category: 'mao-de-obra', name: 'Pedreiro' },
+    { category: 'mao-de-obra', name: 'Eletricista' },
+    { category: 'mao-de-obra', name: 'Armador' },
+    { category: 'mao-de-obra', name: 'Encanador' },
+    // Equipamentos
+    { category: 'equipamentos', name: 'Betoneira' },
+    { category: 'equipamentos', name: 'Andaime' },
+    { category: 'equipamentos', name: 'Escavadeira' },
+    { category: 'equipamentos', name: 'Compactador' },
+    // Tipos de ocorrências
+    { category: 'tipos-ocorrencia', name: 'Acidente de trabalho' },
+    { category: 'tipos-ocorrencia', name: 'Paralisação por chuva' },
+    { category: 'tipos-ocorrencia', name: 'Falta de material' },
+    { category: 'tipos-ocorrencia', name: 'Visita técnica' },
+    // Checklist
+    { category: 'checklist', name: 'Verificar uso de EPI por todos os trabalhadores' },
+    { category: 'checklist', name: 'Sinalização de segurança instalada' },
+    { category: 'checklist', name: 'Reunião diária de segurança realizada' },
+    { category: 'checklist', name: 'Área limpa e organizada ao final do dia' },
+    // Modelos de relatório
+    { category: 'modelos-relatorio', name: 'Relatório Diário Padrão' },
+    { category: 'modelos-relatorio', name: 'Relatório Mensal Consolidado' },
+    { category: 'modelos-relatorio', name: 'Relatório de Ocorrências' },
+  ]
+
+  let preCadCreated = 0
+  for (const item of preCadastros) {
+    const existing = await prisma.preCadastro.findFirst({
+      where: { companyId: company.id, category: item.category, name: item.name },
+    })
+    if (!existing) {
+      await prisma.preCadastro.create({
+        data: { companyId: company.id, category: item.category, name: item.name },
+      })
+      preCadCreated++
+    }
+  }
+  console.log(`✅ Pré-cadastros demo: ${preCadCreated} criados (${preCadastros.length - preCadCreated} já existiam)`)
+
   console.log('\n🎉 Seed concluído!\n')
   console.log('📋 Credenciais:')
   console.log('  SUPER_ADMIN:     superadmin@diariobras.com      / SuperAdmin@2025')

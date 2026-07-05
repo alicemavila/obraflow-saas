@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 import type { NextRequest } from 'next/server'
 
 interface AuditEventParams {
@@ -34,7 +35,7 @@ export async function logAuditEvent(params: AuditEventParams): Promise<void> {
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId ?? null,
-        payload: safePayload,
+        payload: safePayload as Prisma.InputJsonValue | undefined,
         ipAddress: ip,
         userAgent: ua.substring(0, 500),
       },

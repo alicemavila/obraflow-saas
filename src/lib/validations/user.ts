@@ -26,8 +26,7 @@ export const updateUserRoleSchema = z.object({
   ),
 })
 
-export const acceptInviteSchema = z
-  .object({
+export const acceptInviteBaseSchema = z.object({
     token: z.string().min(1),
     password: z
       .string()
@@ -35,7 +34,9 @@ export const acceptInviteSchema = z
       .regex(/[A-Z]/, 'Senha deve conter ao menos uma letra maiúscula')
       .regex(/[0-9]/, 'Senha deve conter ao menos um número'),
     confirmPassword: z.string(),
-  })
+})
+
+export const acceptInviteSchema = acceptInviteBaseSchema
   .refine((d) => d.password === d.confirmPassword, {
     message: 'As senhas não conferem',
     path: ['confirmPassword'],

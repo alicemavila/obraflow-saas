@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/db'
 import { ProfileForm } from '@/components/domain/users/ProfileForm'
 
 export const metadata: Metadata = { title: 'Meu Perfil' }
