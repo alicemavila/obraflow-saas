@@ -114,6 +114,10 @@ jobs:
       - name: Gerar Prisma Client
         run: npx prisma generate
 
+      - name: Validar secrets de produÃ§Ã£o
+        if: github.event_name != 'pull_request'
+        run: npm run ci:validate-env
+
       - name: Aplicar migrations no banco de CI
         run: npx prisma migrate deploy
 

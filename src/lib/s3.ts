@@ -34,6 +34,41 @@ export const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_DOCUMENT_TYPES]
 export const MAX_IMAGE_SIZE_BYTES = (parseInt(process.env.MAX_UPLOAD_SIZE_MB ?? '20', 10)) * 1024 * 1024
 export const MAX_PDF_SIZE_BYTES = (parseInt(process.env.MAX_PDF_SIZE_MB ?? '50', 10)) * 1024 * 1024
 
+const MIME_EXTENSIONS: Record<string, string[]> = {
+  'image/jpeg': ['jpg', 'jpeg'],
+  'image/png': ['png'],
+  'image/webp': ['webp'],
+  'image/heic': ['heic', 'heif'],
+  'application/pdf': ['pdf'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['xlsx'],
+  'application/vnd.ms-excel': ['xls'],
+  'image/vnd.dwg': ['dwg'],
+  'image/x-dwg': ['dwg'],
+}
+
+const BLOCKED_EXTENSIONS = new Set([
+  'app',
+  'bat',
+  'cmd',
+  'com',
+  'cpl',
+  'dll',
+  'exe',
+  'hta',
+  'jar',
+  'js',
+  'jse',
+  'msi',
+  'php',
+  'pif',
+  'ps1',
+  'scr',
+  'sh',
+  'vbe',
+  'vbs',
+  'wsf',
+])
+
 // ─── Helpers de chave ─────────────────────────────────────────────────────────
 
 export function generateStorageKey(
@@ -102,6 +137,26 @@ export async function deleteObject(storageKey: string): Promise<void> {
  */
 export function validateMimeType(mimeType: string): boolean {
   return ALLOWED_TYPES.includes(mimeType)
+}
+
+/**
+ * Valida nome/extensao em conjunto com o MIME declarado.
+ */
+export function validateFileNameForMimeType(fileName: string, mimeType: string): boolean {
+  if (!fileName || fileName.includes('/') || fileName.includes('\\') || /[\u0000-\u001f]/.test(fileName)) {
+    return false
+  }
+
+  const parts = fileName.toLowerCase().split('.').filter(Boolean)
+  if (parts.length < 2) return false
+
+  const extensions = parts.slice(1)
+  if (extensions.some((ext) => BLOCKED_EXTENSIONS.has(ext))) return false
+
+  const expectedExtensions = MIME_EXTENSIONS[mimeType]
+  const finalExtension = extensions.at(-1)
+
+  return Boolean(finalExtension && expectedExtensions?.includes(finalExtension))
 }
 
 /**

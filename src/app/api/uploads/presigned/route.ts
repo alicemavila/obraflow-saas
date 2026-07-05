@@ -7,6 +7,7 @@ import {
   generateStorageKey,
   generatePresignedUploadUrl,
   validateMimeType,
+  validateFileNameForMimeType,
   validateFileSize,
   ALLOWED_TYPES,
 } from '@/lib/s3'
@@ -34,6 +35,10 @@ export async function POST(req: NextRequest) {
         `Tipo de arquivo não permitido. Tipos aceitos: ${ALLOWED_TYPES.join(', ')}`,
         'UNSUPPORTED_FILE_TYPE'
       )
+    }
+
+    if (!validateFileNameForMimeType(fileName, mimeType)) {
+      throw new BusinessError('Nome ou extensão de arquivo não permitido', 'UNSUPPORTED_FILE_TYPE')
     }
 
     if (!validateFileSize(mimeType, fileSize)) {

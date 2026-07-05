@@ -4,6 +4,8 @@ import { ok, handleError } from '@/lib/api-response'
 import { getCurrentUser } from '@/lib/auth-helpers'
 import { ForbiddenError } from '@/lib/permissions'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser()

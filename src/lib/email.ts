@@ -1,6 +1,16 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+let resendClient: Resend | null = null
+
+function getResendClient(): Resend {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY is not configured')
+  }
+
+  resendClient ??= new Resend(apiKey)
+  return resendClient
+}
 
 const FROM = `${process.env.EMAIL_FROM_NAME ?? 'Diário de Obras'} <${process.env.EMAIL_FROM ?? 'noreply@diariobras.com'}>`
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
@@ -18,7 +28,7 @@ export async function sendPasswordResetEmail(
   const resetUrl = `${APP_URL}/reset-password?token=${token}`
 
   try {
-    await resend.emails.send({
+    await getResendClient().emails.send({
       from: FROM,
       to,
       subject: 'Redefinição de senha — Diário de Obras',
@@ -57,7 +67,7 @@ export async function sendInviteEmail(
   const inviteUrl = `${APP_URL}/accept-invite?token=${token}`
 
   try {
-    await resend.emails.send({
+    await getResendClient().emails.send({
       from: FROM,
       to,
       subject: `Convite para ${companyName} — Diário de Obras`,
