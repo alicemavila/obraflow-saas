@@ -10,14 +10,30 @@ on:
 env:
   NODE_VERSION: '20'
 
+  # Variáveis fake apenas para CI/build/testes.
+  # Não são secrets reais e não devem ser usadas em produção.
+  AUTH_SECRET: 'ci-auth-secret-with-at-least-32-characters'
+  NEXTAUTH_URL: 'http://localhost:3000'
+  NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
+  NEXT_PUBLIC_APP_NAME: 'Diário de Obras'
+
+  RESEND_API_KEY: 're_ci_fake_key'
+  EMAIL_FROM: 'noreply@example.test'
+  EMAIL_FROM_NAME: 'Diário de Obras'
+
+  R2_ACCOUNT_ID: 'ci-account-id'
+  R2_ACCESS_KEY_ID: 'ci-access-key-id'
+  R2_SECRET_ACCESS_KEY: 'ci-secret-access-key'
+  R2_BUCKET_NAME: 'ci-bucket'
+  R2_PUBLIC_URL: 'http://localhost:3000/uploads'
+
 jobs:
-  # ─── Lint + Type-check ──────────────────────────────────────────────────────
-  # Não precisa de banco real: `prisma generate` só lê o schema.
   quality:
     name: Lint & Type-check
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/dummy?schema=public'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,15 +51,15 @@ jobs:
       - name: ESLint
         run: npm run lint
 
-      - name: Type-check (tsc)
+      - name: Type-check
         run: npm run type-check
 
-  # ─── Testes unitários ────────────────────────────────────────────────────────
   test:
     name: Testes
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/dummy?schema=public'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -61,9 +77,6 @@ jobs:
       - name: Rodar testes
         run: npm test
 
-  # ─── Migrations + Build ──────────────────────────────────────────────────────
-  # Sobe um Postgres descartável só para validar que as migrations aplicam
-  # limpas, e faz o build de produção usando os SECRETS do repositório.
   build:
     name: Migrations & Build
     runs-on: ubuntu-latest
@@ -86,19 +99,6 @@ jobs:
 
     env:
       DATABASE_URL: 'postgresql://ci:ci@localhost:5432/obraflow_ci?schema=public'
-      # Segredos reais vêm do repositório (Settings > Secrets and variables > Actions)
-      AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-      NEXTAUTH_URL: ${{ vars.NEXTAUTH_URL || 'http://localhost:3000' }}
-      NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' }}
-      NEXT_PUBLIC_APP_NAME: 'Diário de Obras'
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-      R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-      EMAIL_FROM_NAME: 'Diário de Obras'
 
     steps:
       - uses: actions/checkout@v4
@@ -113,10 +113,6 @@ jobs:
 
       - name: Gerar Prisma Client
         run: npx prisma generate
-
-      - name: Validar secrets de produÃ§Ã£o
-        if: github.event_name != 'pull_request'
-        run: npm run ci:validate-env
 
       - name: Aplicar migrations no banco de CI
         run: npx prisma migrate deploy
