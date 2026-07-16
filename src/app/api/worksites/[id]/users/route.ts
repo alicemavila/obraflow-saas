@@ -20,7 +20,8 @@ const addUserSchema = z.object({
   ),
 })
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
 
@@ -47,7 +48,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const currentUser = await getCurrentUser()
     if (!['SUPER_ADMIN', 'ADMIN_EMPRESA'].includes(currentUser.role)) throw new ForbiddenError()

@@ -7,7 +7,8 @@ import Link from 'next/link'
 
 export const metadata: Metadata = { title: 'Editar Obra' }
 
-export default async function EditarObraPage({ params }: { params: { id: string } }) {
+export default async function EditarObraPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth()
   const user = session!.user
 

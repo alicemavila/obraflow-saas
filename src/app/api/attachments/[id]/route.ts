@@ -5,7 +5,8 @@ import { getCurrentUser } from '@/lib/auth-helpers'
 import { assertSameTenant, ForbiddenError, NotFoundError, BusinessError } from '@/lib/permissions'
 import { logAuditEvent } from '@/lib/audit'
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (user.role === 'CLIENTE_SINDICO') throw new ForbiddenError()

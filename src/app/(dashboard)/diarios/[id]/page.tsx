@@ -21,7 +21,8 @@ const SEV_VARIANTS: Record<string, 'muted' | 'info' | 'warning' | 'destructive'>
   BAIXA: 'muted', MEDIA: 'info', ALTA: 'warning', CRITICA: 'destructive',
 }
 
-export default async function DiarioDetailPage({ params }: { params: { id: string } }) {
+export default async function DiarioDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth()
   const user = session!.user
 

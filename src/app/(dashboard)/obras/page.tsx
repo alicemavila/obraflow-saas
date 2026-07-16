@@ -33,7 +33,8 @@ interface SearchParams {
   groupId?: string
 }
 
-export default async function ObrasPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function ObrasPage(props: { searchParams: Promise<SearchParams> }) {
+  const searchParams = await props.searchParams;
   const session = await auth()
   const user = session!.user
 

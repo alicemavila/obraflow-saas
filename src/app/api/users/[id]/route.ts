@@ -6,7 +6,8 @@ import { ForbiddenError, NotFoundError, assertSameTenant } from '@/lib/permissio
 import { updateUserSchema } from '@/lib/validations/user'
 import { logAuditEvent } from '@/lib/audit'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
 
@@ -45,7 +46,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const currentUser = await getCurrentUser()
 

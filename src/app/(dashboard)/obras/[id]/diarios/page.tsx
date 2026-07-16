@@ -19,9 +19,11 @@ const STATUS_VARIANTS: Record<string, 'muted' | 'warning' | 'success' | 'destruc
   RASCUNHO: 'muted', SUBMETIDO: 'warning', APROVADO: 'success', REJEITADO: 'destructive',
 }
 
-export default async function ObraDiariosPage({
-  params, searchParams,
-}: { params: { id: string }; searchParams: { status?: string } }) {
+export default async function ObraDiariosPage(
+  props: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string }> }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const session = await auth()
   const user = session!.user
 

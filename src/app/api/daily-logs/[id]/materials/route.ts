@@ -5,7 +5,8 @@ import { getCurrentUser } from '@/lib/auth-helpers'
 import { assertSameTenant, canEditDailyLog, ForbiddenError, NotFoundError, BusinessError } from '@/lib/permissions'
 import { createMaterialSchema } from '@/lib/validations/daily-log'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     const log = await prisma.dailyLog.findUnique({ where: { id: params.id } })
@@ -19,7 +20,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (user.role === 'CLIENTE_SINDICO') throw new ForbiddenError()
