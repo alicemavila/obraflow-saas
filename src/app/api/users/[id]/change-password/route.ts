@@ -7,7 +7,8 @@ import { changePasswordSchema } from '@/lib/validations/auth'
 import { logAuditEvent } from '@/lib/audit'
 import bcrypt from 'bcryptjs'
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const currentUser = await getCurrentUser()
     // Only the user themselves can change their own password

@@ -9,7 +9,8 @@ import { NewDailyLogForm } from '@/components/domain/daily-log/NewDailyLogForm'
 
 export const metadata: Metadata = { title: 'Novo Diário' }
 
-export default async function NovoDiarioPage({ params }: { params: { id: string } }) {
+export default async function NovoDiarioPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth()
   const user = session!.user
 

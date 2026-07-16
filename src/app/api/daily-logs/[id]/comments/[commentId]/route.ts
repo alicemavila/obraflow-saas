@@ -5,7 +5,11 @@ import { getCurrentUser } from '@/lib/auth-helpers'
 import { assertSameTenant, ForbiddenError, NotFoundError } from '@/lib/permissions'
 import { createCommentSchema } from '@/lib/validations/daily-log'
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; commentId: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  props: { params: Promise<{ id: string; commentId: string }> }
+) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     const comment = await prisma.comment.findFirst({
@@ -28,7 +32,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string; commentId: string } }) {
+export async function DELETE(
+  _req: NextRequest,
+  props: { params: Promise<{ id: string; commentId: string }> }
+) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     const comment = await prisma.comment.findFirst({

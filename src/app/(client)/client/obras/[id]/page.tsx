@@ -13,7 +13,8 @@ export const metadata: Metadata = { title: 'Obra — Portal Cliente' }
 
 const LOG_LABELS: Record<string, string> = { APROVADO: 'Aprovado' }
 
-export default async function ClientObraPage({ params }: { params: { id: string } }) {
+export default async function ClientObraPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth()
   const userId = session!.user.id
 

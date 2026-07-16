@@ -5,7 +5,8 @@ import { getCurrentUser } from '@/lib/auth-helpers'
 import { ForbiddenError, NotFoundError, BusinessError, assertSameTenant } from '@/lib/permissions'
 import { logAuditEvent } from '@/lib/audit'
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const currentUser = await getCurrentUser()
     if (!['SUPER_ADMIN', 'ADMIN_EMPRESA'].includes(currentUser.role)) {

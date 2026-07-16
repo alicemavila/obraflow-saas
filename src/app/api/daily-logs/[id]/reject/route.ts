@@ -12,7 +12,8 @@ import {
 import { rejectDailyLogSchema } from '@/lib/validations/daily-log'
 import { logAuditEvent } from '@/lib/audit'
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (!['SUPER_ADMIN', 'ADMIN_EMPRESA', 'GESTOR_OBRA'].includes(user.role)) {

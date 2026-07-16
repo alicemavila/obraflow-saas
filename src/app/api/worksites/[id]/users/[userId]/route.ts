@@ -6,8 +6,9 @@ import { ForbiddenError, NotFoundError, assertSameTenant } from '@/lib/permissio
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; userId: string } }
+  props: { params: Promise<{ id: string; userId: string }> }
 ) {
+  const params = await props.params;
   try {
     const currentUser = await getCurrentUser()
     if (!['SUPER_ADMIN', 'ADMIN_EMPRESA'].includes(currentUser.role)) throw new ForbiddenError()

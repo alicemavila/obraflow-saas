@@ -12,7 +12,8 @@ import { DailyLogPDF } from '@/components/pdf/DailyLogPDF'
 import { logAuditEvent } from '@/lib/audit'
 import { createElement } from 'react'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (!canGenerateReport(user)) throw new ForbiddenError()

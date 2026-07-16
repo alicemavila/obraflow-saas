@@ -5,7 +5,11 @@ import { getCurrentUser } from '@/lib/auth-helpers'
 import { assertSameTenant, canEditDailyLog, ForbiddenError, NotFoundError, BusinessError } from '@/lib/permissions'
 import { createLaborSchema } from '@/lib/validations/daily-log'
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; laborId: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  props: { params: Promise<{ id: string; laborId: string }> }
+) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (user.role === 'CLIENTE_SINDICO') throw new ForbiddenError()
@@ -30,7 +34,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string; laborId: string } }) {
+export async function DELETE(
+  _req: NextRequest,
+  props: { params: Promise<{ id: string; laborId: string }> }
+) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (user.role === 'CLIENTE_SINDICO') throw new ForbiddenError()

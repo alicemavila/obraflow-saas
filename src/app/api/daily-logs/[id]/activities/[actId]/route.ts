@@ -7,8 +7,9 @@ import { createActivitySchema } from '@/lib/validations/daily-log'
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; actId: string } }
+  props: { params: Promise<{ id: string; actId: string }> }
 ) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (user.role === 'CLIENTE_SINDICO') throw new ForbiddenError()
@@ -42,8 +43,9 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; actId: string } }
+  props: { params: Promise<{ id: string; actId: string }> }
 ) {
+  const params = await props.params;
   try {
     const user = await getCurrentUser()
     if (user.role === 'CLIENTE_SINDICO') throw new ForbiddenError()

@@ -27,7 +27,8 @@ function decimalToNumber(value: { toNumber(): number } | null): number | null {
   return value == null ? null : value.toNumber()
 }
 
-export default async function EditarDiarioPage({ params }: { params: { id: string } }) {
+export default async function EditarDiarioPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth()
   const user = session!.user
 

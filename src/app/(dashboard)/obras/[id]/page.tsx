@@ -21,7 +21,8 @@ const STATUS_VARIANTS: Record<WorksiteStatus, 'info' | 'success' | 'warning' | '
   PLANEJAMENTO: 'info', EM_ANDAMENTO: 'success', PAUSADA: 'warning', CONCLUIDA: 'muted', CANCELADA: 'destructive',
 }
 
-export default async function ObraDetailPage({ params }: { params: { id: string } }) {
+export default async function ObraDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth()
   const user = session!.user
 

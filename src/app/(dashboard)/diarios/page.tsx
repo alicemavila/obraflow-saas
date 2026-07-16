@@ -16,7 +16,8 @@ const STATUS_VARIANTS: Record<string, 'muted' | 'warning' | 'success' | 'destruc
   RASCUNHO: 'muted', SUBMETIDO: 'warning', APROVADO: 'success', REJEITADO: 'destructive',
 }
 
-export default async function DiariosPage({ searchParams }: { searchParams: { status?: string } }) {
+export default async function DiariosPage(props: { searchParams: Promise<{ status?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await auth()
   const user = session!.user
 

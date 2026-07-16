@@ -8,7 +8,8 @@ import { WorksiteTeamManager } from '@/components/domain/worksite/WorksiteTeamMa
 
 export const metadata: Metadata = { title: 'Equipe da Obra' }
 
-export default async function EquipeObraPage({ params }: { params: { id: string } }) {
+export default async function EquipeObraPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth()
   const user = session!.user
 
