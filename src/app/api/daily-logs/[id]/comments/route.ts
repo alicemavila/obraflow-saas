@@ -1,61 +1,314 @@
 import type { NextRequest } from 'next/server'
-import { prisma } from '@/lib/db'
-import { ok, created, handleError } from '@/lib/api-response'
+
+import {
+  created,
+  handleError,
+  ok,
+} from '@/lib/api-response'
+import { logAuditEvent } from '@/lib/audit'
 import { getCurrentUser } from '@/lib/auth-helpers'
-import { assertSameTenant, isWorksiteAssociated, ForbiddenError, NotFoundError } from '@/lib/permissions'
+import { prisma } from '@/lib/db'
+import {
+  assertWorksiteAccess,
+  NotFoundError,
+} from '@/lib/permissions'
 import { createCommentSchema } from '@/lib/validations/daily-log'
 
-export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  try {
-    const user = await getCurrentUser()
-    const log = await prisma.dailyLog.findUnique({ where: { id: params.id } })
-    if (!log) throw new NotFoundError('Diário não encontrado')
-    if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, log.companyId)
-    if (user.role === 'CLIENTE_SINDICO' && log.status !== 'APROVADO') throw new ForbiddenError()
+type RouteContext = {
+  params: Promise<{
+    id: string
+  }>
+}
 
-    const comments = await prisma.comment.findMany({
-      where: { entityType: 'DAILY_LOG', entityId: params.id, isDeleted: false },
-      include: { createdBy: { select: { id: true, name: true, avatarUrl: true } } },
-      orderBy: { createdAt: 'asc' },
+/**
+ * Busca o diário com os dados necessários para autorização.
+ */
+async function getDailyLogOrThrow(
+  dailyLogId: string,
+) {
+  const dailyLog =
+    await prisma.dailyLog.findUnique({
+      where: {
+        id: dailyLogId,
+      },
+
+      select: {
+        id: true,
+        companyId: true,
+        worksiteId: true,
+        status: true,
+
+        worksite: {
+          select: {
+            id: true,
+            companyId: true,
+          },
+        },
+      },
     })
+
+  if (!dailyLog) {
+    throw new NotFoundError(
+      'Diário não encontrado',
+    )
+  }
+
+  /*
+   * O diário e a obra precisam pertencer à mesma empresa.
+   * Uma inconsistência de tenant não deve ser exposta.
+   */
+  if (
+    dailyLog.companyId !==
+    dailyLog.worksite.companyId
+  ) {
+    throw new NotFoundError(
+      'Diário não encontrado',
+    )
+  }
+
+  return dailyLog
+}
+
+/**
+ * Lista os comentários de um diário.
+ *
+ * Regras:
+ * - o usuário precisa ter acesso à obra;
+ * - cliente/síndico visualiza somente comentários de diário aprovado;
+ * - comentários excluídos logicamente não são retornados;
+ * - a consulta também filtra pelo companyId.
+ */
+export async function GET(
+  _req: NextRequest,
+  context: RouteContext,
+) {
+  try {
+    const { id: dailyLogId } =
+      await context.params
+
+    const user =
+      await getCurrentUser()
+
+    const dailyLog =
+      await getDailyLogOrThrow(
+        dailyLogId,
+      )
+
+    /*
+     * Garante isolamento entre empresas e associação à obra.
+     */
+    await assertWorksiteAccess(
+      user,
+      dailyLog.worksiteId,
+    )
+
+    /*
+     * Retorna 404 para não revelar ao cliente a existência
+     * de um diário ainda não aprovado.
+     */
+    if (
+      user.role === 'CLIENTE_SINDICO' &&
+      dailyLog.status !== 'APROVADO'
+    ) {
+      throw new NotFoundError(
+        'Diário não encontrado',
+      )
+    }
+
+    const comments =
+      await prisma.comment.findMany({
+        where: {
+          companyId:
+            dailyLog.companyId,
+
+          entityType:
+            'DAILY_LOG',
+
+          entityId:
+            dailyLogId,
+
+          isDeleted:
+            false,
+        },
+
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+            },
+          },
+        },
+
+        orderBy: {
+          createdAt: 'asc',
+        },
+      })
+
     return ok(comments)
-  } catch (err) {
-    return handleError(err)
+  } catch (error) {
+    return handleError(error)
   }
 }
 
-export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+/**
+ * Cria um comentário em um diário.
+ *
+ * Regras:
+ * - o usuário precisa ter acesso à obra;
+ * - cliente/síndico comenta somente em diário aprovado;
+ * - companyId e entityId são obtidos pelo backend;
+ * - o conteúdo passa pela validação do schema;
+ * - a criação é registrada na auditoria.
+ *
+ * Comentários não utilizam canEditDailyLog porque não alteram
+ * diretamente os dados técnicos do diário.
+ */
+export async function POST(
+  req: NextRequest,
+  context: RouteContext,
+) {
   try {
-    const user = await getCurrentUser()
-    const log = await prisma.dailyLog.findUnique({ where: { id: params.id } })
-    if (!log) throw new NotFoundError('Diário não encontrado')
-    if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, log.companyId)
+    const { id: dailyLogId } =
+      await context.params
 
-    // CLIENTE_SINDICO só comenta em aprovados
-    if (user.role === 'CLIENTE_SINDICO' && log.status !== 'APROVADO') {
-      throw new ForbiddenError('Comentários só são permitidos em diários aprovados')
+    const user =
+      await getCurrentUser()
+
+    const dailyLog =
+      await getDailyLogOrThrow(
+        dailyLogId,
+      )
+
+    /*
+     * Impede comentários em diário de outra obra da mesma empresa.
+     */
+    await assertWorksiteAccess(
+      user,
+      dailyLog.worksiteId,
+    )
+
+    if (
+      user.role === 'CLIENTE_SINDICO' &&
+      dailyLog.status !== 'APROVADO'
+    ) {
+      throw new NotFoundError(
+        'Diário não encontrado',
+      )
     }
 
-    const associated = await isWorksiteAssociated(user, log.worksiteId)
-    if (!associated) throw new ForbiddenError()
+    const body: unknown =
+      await req.json()
 
-    const body = await req.json()
-    const { content } = createCommentSchema.parse(body)
+    const {
+      content,
+    } = createCommentSchema.parse(body)
 
-    const comment = await prisma.comment.create({
-      data: {
-        companyId: log.companyId,
-        entityType: 'DAILY_LOG',
-        entityId: params.id,
-        content,
-        createdById: user.id,
+    /*
+     * O status é verificado novamente dentro da transação.
+     * Isso evita que um cliente comente caso o status do diário
+     * seja alterado durante o processamento da requisição.
+     */
+    const comment =
+      await prisma.$transaction(
+        async (transaction) => {
+          const currentDailyLog =
+            await transaction.dailyLog.findFirst({
+              where: {
+                id: dailyLogId,
+                companyId:
+                  dailyLog.companyId,
+                worksiteId:
+                  dailyLog.worksiteId,
+              },
+
+              select: {
+                status: true,
+              },
+            })
+
+          if (!currentDailyLog) {
+            throw new NotFoundError(
+              'Diário não encontrado',
+            )
+          }
+
+          if (
+            user.role ===
+              'CLIENTE_SINDICO' &&
+            currentDailyLog.status !==
+              'APROVADO'
+          ) {
+            throw new NotFoundError(
+              'Diário não encontrado',
+            )
+          }
+
+          return transaction.comment.create({
+            data: {
+              companyId:
+                dailyLog.companyId,
+
+              entityType:
+                'DAILY_LOG',
+
+              entityId:
+                dailyLogId,
+
+              content,
+
+              createdById:
+                user.id,
+            },
+
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+          })
+        },
+      )
+
+    await logAuditEvent({
+      userId:
+        user.id,
+
+      companyId:
+        dailyLog.companyId,
+
+      action:
+        'daily_log.comment_created',
+
+      entityType:
+        'Comment',
+
+      entityId:
+        comment.id,
+
+      /*
+       * O conteúdo não é registrado na auditoria para evitar
+       * duplicação desnecessária de texto potencialmente pessoal.
+       */
+      payload: {
+        dailyLogId,
+        worksiteId:
+          dailyLog.worksiteId,
       },
-      include: { createdBy: { select: { id: true, name: true, avatarUrl: true } } },
+
+      req,
     })
-    return created(comment)
-  } catch (err) {
-    return handleError(err)
+
+    return created(
+      comment,
+      'Comentário adicionado',
+    )
+  } catch (error) {
+    return handleError(error)
   }
 }

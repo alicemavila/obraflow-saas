@@ -1,47 +1,291 @@
 import type { NextRequest } from 'next/server'
-import { prisma } from '@/lib/db'
-import { ok, created, handleError } from '@/lib/api-response'
+
+import {
+  created,
+  handleError,
+  ok,
+} from '@/lib/api-response'
+import { logAuditEvent } from '@/lib/audit'
 import { getCurrentUser } from '@/lib/auth-helpers'
-import { assertSameTenant, canEditDailyLog, ForbiddenError, NotFoundError, BusinessError } from '@/lib/permissions'
+import { prisma } from '@/lib/db'
+import {
+  assertWorksiteAccess,
+  BusinessError,
+  canEditDailyLog,
+  ForbiddenError,
+  NotFoundError,
+} from '@/lib/permissions'
 import { createLaborSchema } from '@/lib/validations/daily-log'
 
-export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  try {
-    const user = await getCurrentUser()
-    const log = await prisma.dailyLog.findUnique({ where: { id: params.id } })
-    if (!log) throw new NotFoundError('Diário não encontrado')
-    if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, log.companyId)
-    if (user.role === 'CLIENTE_SINDICO' && log.status !== 'APROVADO') throw new ForbiddenError()
+type RouteContext = {
+  params: Promise<{
+    id: string
+  }>
+}
 
-    const labor = await prisma.labor.findMany({ where: { dailyLogId: params.id } })
-    return ok(labor)
-  } catch (err) {
-    return handleError(err)
+/**
+ * Busca o diário com os dados necessários para autorização.
+ */
+async function getDailyLogOrThrow(
+  dailyLogId: string,
+) {
+  const dailyLog =
+    await prisma.dailyLog.findUnique({
+      where: {
+        id: dailyLogId,
+      },
+
+      select: {
+        id: true,
+        companyId: true,
+        worksiteId: true,
+        status: true,
+        createdById: true,
+
+        worksite: {
+          select: {
+            id: true,
+            companyId: true,
+          },
+        },
+      },
+    })
+
+  if (!dailyLog) {
+    throw new NotFoundError(
+      'Diário não encontrado',
+    )
+  }
+
+  /*
+   * O diário e a obra precisam pertencer à mesma empresa.
+   * Em caso de inconsistência, o recurso não é exposto.
+   */
+  if (
+    dailyLog.companyId !==
+    dailyLog.worksite.companyId
+  ) {
+    throw new NotFoundError(
+      'Diário não encontrado',
+    )
+  }
+
+  return dailyLog
+}
+
+/**
+ * Lista os registros de mão de obra de um diário.
+ *
+ * Regras:
+ * - o usuário precisa ter acesso à obra;
+ * - cliente/síndico visualiza somente diário aprovado;
+ * - os registros são filtrados também pelo companyId.
+ */
+export async function GET(
+  _req: NextRequest,
+  context: RouteContext,
+) {
+  try {
+    const { id: dailyLogId } =
+      await context.params
+
+    const user =
+      await getCurrentUser()
+
+    const dailyLog =
+      await getDailyLogOrThrow(
+        dailyLogId,
+      )
+
+    /*
+     * Garante isolamento entre empresas e associação à obra.
+     */
+    await assertWorksiteAccess(
+      user,
+      dailyLog.worksiteId,
+    )
+
+    /*
+     * Retorna 404 para não revelar ao cliente a existência
+     * de um diário ainda não aprovado.
+     */
+    if (
+      user.role === 'CLIENTE_SINDICO' &&
+      dailyLog.status !== 'APROVADO'
+    ) {
+      throw new NotFoundError(
+        'Diário não encontrado',
+      )
+    }
+
+    const laborRecords =
+      await prisma.labor.findMany({
+        where: {
+          dailyLogId,
+          companyId:
+            dailyLog.companyId,
+        },
+
+        orderBy: {
+          createdAt: 'asc',
+        },
+      })
+
+    return ok(laborRecords)
+  } catch (error) {
+    return handleError(error)
   }
 }
 
-export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+/**
+ * Adiciona um registro de mão de obra ao diário.
+ *
+ * Regras:
+ * - cliente/síndico não pode criar registros;
+ * - gestor e colaborador precisam estar associados à obra;
+ * - colaborador edita somente o diário criado por ele;
+ * - diário aprovado não pode receber novos registros;
+ * - companyId é obtido do diário, nunca do frontend.
+ */
+export async function POST(
+  req: NextRequest,
+  context: RouteContext,
+) {
   try {
-    const user = await getCurrentUser()
-    if (user.role === 'CLIENTE_SINDICO') throw new ForbiddenError()
+    const { id: dailyLogId } =
+      await context.params
 
-    const log = await prisma.dailyLog.findUnique({ where: { id: params.id } })
-    if (!log) throw new NotFoundError('Diário não encontrado')
-    if (user.role !== 'SUPER_ADMIN') assertSameTenant(user, log.companyId)
+    const user =
+      await getCurrentUser()
 
-    if (!canEditDailyLog(user, log.status, log.createdById)) {
-      throw new BusinessError('Diário não pode ser editado', 'DIARY_ALREADY_APPROVED')
+    if (
+      user.role ===
+      'CLIENTE_SINDICO'
+    ) {
+      throw new ForbiddenError(
+        'Cliente ou síndico não pode adicionar mão de obra ao diário',
+      )
     }
 
-    const body = await req.json()
-    const data = createLaborSchema.parse(body)
-    const labor = await prisma.labor.create({
-      data: { dailyLogId: params.id, companyId: log.companyId, ...data },
+    const dailyLog =
+      await getDailyLogOrThrow(
+        dailyLogId,
+      )
+
+    /*
+     * Impede acesso a um diário de outra obra da mesma empresa.
+     */
+    await assertWorksiteAccess(
+      user,
+      dailyLog.worksiteId,
+    )
+
+    if (
+      dailyLog.status ===
+      'APROVADO'
+    ) {
+      throw new BusinessError(
+        'Diário aprovado não pode ser editado',
+        'DIARY_ALREADY_APPROVED',
+      )
+    }
+
+    if (
+      !canEditDailyLog(
+        user,
+        dailyLog.status,
+        dailyLog.createdById,
+      )
+    ) {
+      throw new ForbiddenError(
+        'Você não possui permissão para adicionar mão de obra a este diário',
+      )
+    }
+
+    const body: unknown =
+      await req.json()
+
+    const data =
+      createLaborSchema.parse(body)
+
+    /*
+     * A situação do diário é verificada novamente dentro
+     * da transação antes da criação do registro.
+     */
+    const laborRecord =
+      await prisma.$transaction(
+        async (transaction) => {
+          const currentDailyLog =
+            await transaction.dailyLog.findFirst({
+              where: {
+                id: dailyLogId,
+                companyId:
+                  dailyLog.companyId,
+              },
+
+              select: {
+                status: true,
+              },
+            })
+
+          if (!currentDailyLog) {
+            throw new NotFoundError(
+              'Diário não encontrado',
+            )
+          }
+
+          if (
+            currentDailyLog.status ===
+            'APROVADO'
+          ) {
+            throw new BusinessError(
+              'Diário aprovado não pode ser editado',
+              'DIARY_ALREADY_APPROVED',
+            )
+          }
+
+          return transaction.labor.create({
+            data: {
+              dailyLogId,
+              companyId:
+                dailyLog.companyId,
+
+              ...data,
+            },
+          })
+        },
+      )
+
+    await logAuditEvent({
+      userId:
+        user.id,
+
+      companyId:
+        dailyLog.companyId,
+
+      action:
+        'daily_log.labor_created',
+
+      entityType:
+        'Labor',
+
+      entityId:
+        laborRecord.id,
+
+      payload: {
+        dailyLogId,
+        worksiteId:
+          dailyLog.worksiteId,
+      },
+
+      req,
     })
-    return created(labor)
-  } catch (err) {
-    return handleError(err)
+
+    return created(
+      laborRecord,
+      'Registro de mão de obra adicionado',
+    )
+  } catch (error) {
+    return handleError(error)
   }
 }
