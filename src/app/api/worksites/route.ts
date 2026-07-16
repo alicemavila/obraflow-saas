@@ -1,161 +1,465 @@
+import {
+  WorksiteStatus,
+  type Prisma,
+} from '@prisma/client'
 import type { NextRequest } from 'next/server'
-import { prisma } from '@/lib/db'
-import { ok, created, handleError } from '@/lib/api-response'
-import { getCurrentUser } from '@/lib/auth-helpers'
-import { ForbiddenError, ConflictError, BusinessError } from '@/lib/permissions'
-import { createWorksiteSchema, calculateWorksiteProfileCompletion } from '@/lib/validations/worksite'
-import { logAuditEvent } from '@/lib/audit'
 
+import {
+  created,
+  handleError,
+  ok,
+} from '@/lib/api-response'
+import { logAuditEvent } from '@/lib/audit'
+import { getCurrentUser } from '@/lib/auth-helpers'
+import { prisma } from '@/lib/db'
+import {
+  BusinessError,
+  canManageWorksites,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from '@/lib/permissions'
+import {
+  calculateWorksiteProfileCompletion,
+  createWorksiteSchema,
+} from '@/lib/validations/worksite'
+
+/**
+ * Converte parâmetros de paginação em números inteiros positivos.
+ */
+function parsePositiveInteger(
+  value: string | null,
+  fallback: number,
+): number {
+  if (!value) {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(value, 10)
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return fallback
+  }
+
+  return parsed
+}
+
+/**
+ * Extrai o companyId enviado no corpo sem assumir que o JSON
+ * recebido possui um formato válido.
+ */
+function getRequestedCompanyId(
+  body: unknown,
+): string | undefined {
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('companyId' in body)
+  ) {
+    return undefined
+  }
+
+  const companyId = body.companyId
+
+  if (typeof companyId !== 'string') {
+    return undefined
+  }
+
+  const normalizedCompanyId = companyId.trim()
+
+  return normalizedCompanyId || undefined
+}
+
+/**
+ * Lista as obras acessíveis ao usuário.
+ *
+ * Regras:
+ * - SUPER_ADMIN pode listar todas as obras;
+ * - ADMIN_EMPRESA lista todas as obras da própria empresa;
+ * - GESTOR_OBRA, COLABORADOR e CLIENTE_SINDICO listam somente
+ *   as obras às quais estão associados;
+ * - usuários não SUPER_ADMIN nunca consultam obras de outro tenant.
+ */
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser()
 
     const { searchParams } = req.nextUrl
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-    const perPage = Math.min(100, parseInt(searchParams.get('perPage') ?? '20', 10))
-    const status = searchParams.get('status') ?? undefined
-    const city = searchParams.get('city') ?? undefined
-    const search = searchParams.get('search') ?? undefined
-    const incomplete = searchParams.get('incomplete')
 
-    // Restrição por associação para GESTOR/COLABORADOR/CLIENTE
-    let worksiteIdsFilter: string[] | undefined
-    if (['CLIENTE_SINDICO', 'GESTOR_OBRA', 'COLABORADOR'].includes(user.role)) {
-      const assocs = await prisma.worksiteUser.findMany({
-        where: { userId: user.id },
-        select: { worksiteId: true },
-      })
-      worksiteIdsFilter = assocs.map((a) => a.worksiteId)
+    const page = parsePositiveInteger(
+      searchParams.get('page'),
+      1,
+    )
+
+    const perPage = Math.min(
+      100,
+      parsePositiveInteger(
+        searchParams.get('perPage'),
+        20,
+      ),
+    )
+
+    const statusParam =
+      searchParams.get('status')
+
+    const city =
+      searchParams.get('city')?.trim() ||
+      undefined
+
+    const search =
+      searchParams.get('search')?.trim() ||
+      undefined
+
+    const incomplete =
+      searchParams.get('incomplete')
+
+    let status: WorksiteStatus | undefined
+
+    if (statusParam) {
+      const validStatuses = Object.values(
+        WorksiteStatus,
+      )
+
+      if (
+        !validStatuses.includes(
+          statusParam as WorksiteStatus,
+        )
+      ) {
+        throw new BusinessError(
+          'Status da obra inválido',
+          'INVALID_WORKSITE_STATUS',
+        )
+      }
+
+      status = statusParam as WorksiteStatus
     }
 
-    const where = {
-      ...(user.role !== 'SUPER_ADMIN' && { companyId: user.companyId }),
-      ...(worksiteIdsFilter !== undefined && { id: { in: worksiteIdsFilter } }),
-      ...(status && { status: status as never }),
-      ...(city && { city: { contains: city, mode: 'insensitive' as const } }),
-      ...(search && { name: { contains: search, mode: 'insensitive' as const } }),
-      ...(incomplete === 'true' && { isProfileComplete: false }),
-      ...(incomplete === 'false' && { isProfileComplete: true }),
-    }
-
-    const [total, worksites] = await prisma.$transaction([
-      prisma.worksite.count({ where }),
-      prisma.worksite.findMany({
-        where,
-        select: {
-          id: true,
-          name: true,
-          city: true,
-          state: true,
-          status: true,
-          startDate: true,
-          endDateForecast: true,
-          responsibleName: true,
-          clientName: true,
-          registrationMode: true,
-          isProfileComplete: true,
-          createdAt: true,
-          group: { select: { id: true, name: true } },
-          _count: { select: { dailyLogs: true } },
-        },
-        skip: (page - 1) * perPage,
-        take: perPage,
-        orderBy: { createdAt: 'desc' },
+    const where: Prisma.WorksiteWhereInput = {
+      ...(status && {
+        status,
       }),
-    ])
 
-    return ok({
-      data: worksites,
-      meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
-    })
-  } catch (err) {
-    return handleError(err)
-  }
-}
+      ...(city && {
+        city: {
+          contains: city,
+          mode: 'insensitive',
+        },
+      }),
 
-export async function POST(req: NextRequest) {
-  try {
-    const user = await getCurrentUser()
-    if (!['SUPER_ADMIN', 'ADMIN_EMPRESA'].includes(user.role)) {
-      throw new ForbiddenError('Apenas administradores podem criar obras')
+      ...(search && {
+        name: {
+          contains: search,
+          mode: 'insensitive',
+        },
+      }),
+
+      ...(incomplete === 'true' && {
+        isProfileComplete: false,
+      }),
+
+      ...(incomplete === 'false' && {
+        isProfileComplete: true,
+      }),
     }
 
-    const body = await req.json()
-    const data = createWorksiteSchema.parse(body)
+    /*
+     * Qualquer usuário que não seja SUPER_ADMIN precisa possuir
+     * uma empresa vinculada na sessão.
+     */
+    if (user.role !== 'SUPER_ADMIN') {
+      const companyId = user.companyId
 
-    const companyId =
-      user.role === 'SUPER_ADMIN'
-        ? ((body.companyId as string) ?? user.companyId!)
-        : user.companyId!
+      if (!companyId) {
+        throw new ForbiddenError(
+          'Usuário sem empresa vinculada',
+        )
+      }
 
-    // Valida groupId no mesmo tenant (nunca confiar no frontend)
-    if (data.groupId) {
-      const group = await prisma.worksiteGroup.findFirst({
-        where: { id: data.groupId, companyId },
-        select: { id: true },
-      })
-      if (!group) {
-        throw new BusinessError('Grupo não encontrado nesta empresa', 'GROUP_NOT_FOUND')
+      /*
+       * Garante o isolamento entre empresas.
+       */
+      where.companyId = companyId
+
+      /*
+       * Gestor, colaborador e cliente/síndico precisam possuir uma
+       * associação válida com a obra dentro da mesma empresa.
+       *
+       * A consulta é feita diretamente na relação WorksiteUser,
+       * evitando buscar IDs separadamente.
+       */
+      if (
+        [
+          'GESTOR_OBRA',
+          'COLABORADOR',
+          'CLIENTE_SINDICO',
+        ].includes(user.role)
+      ) {
+        where.worksiteUsers = {
+          some: {
+            userId: user.id,
+            companyId,
+          },
+        }
       }
     }
 
-    // Verifica limite do plano
-    const company = await prisma.company.findUnique({
-      where: { id: companyId },
-      include: {
-        _count: {
+    const [total, worksites] =
+      await prisma.$transaction([
+        prisma.worksite.count({
+          where,
+        }),
+
+        prisma.worksite.findMany({
+          where,
+
           select: {
-            worksites: { where: { status: { notIn: ['CONCLUIDA', 'CANCELADA'] } } },
+            id: true,
+            name: true,
+            city: true,
+            state: true,
+            status: true,
+            startDate: true,
+            endDateForecast: true,
+            responsibleName: true,
+            clientName: true,
+            registrationMode: true,
+            isProfileComplete: true,
+            createdAt: true,
+
+            group: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+
+            _count: {
+              select: {
+                dailyLogs: true,
+              },
+            },
           },
-        },
+
+          skip: (page - 1) * perPage,
+          take: perPage,
+
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+      ])
+
+    return ok({
+      data: worksites,
+
+      meta: {
+        total,
+        page,
+        perPage,
+        totalPages: Math.ceil(
+          total / perPage,
+        ),
       },
     })
-    if (company && company._count.worksites >= company.maxWorksites) {
-      throw new ConflictError(
-        'Limite de obras ativas do plano atingido.',
-        'WORKSITE_LIMIT_REACHED'
+  } catch (error) {
+    return handleError(error)
+  }
+}
+
+/**
+ * Cria uma nova obra.
+ *
+ * Somente SUPER_ADMIN e ADMIN_EMPRESA podem criar obras.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const user = await getCurrentUser()
+
+    if (!canManageWorksites(user)) {
+      throw new ForbiddenError(
+        'Apenas administradores podem criar obras',
       )
     }
 
-    // Calcula se o cadastro está completo (inclui groupId e endDateForecast)
-    const isProfileComplete = calculateWorksiteProfileCompletion({
-      name: data.name,
-      status: data.status,
-      groupId: data.groupId || null,
-      responsibleName: data.responsibleName || null,
-      startDate: data.startDate || null,
-      endDateForecast: data.endDateForecast || null,
-      registrationMode: data.registrationMode,
-    })
+    const body: unknown = await req.json()
+    const data = createWorksiteSchema.parse(body)
 
-    const worksite = await prisma.worksite.create({
-      data: {
-        companyId,
+    const requestedCompanyId =
+      getRequestedCompanyId(body)
+
+    /*
+     * ADMIN_EMPRESA sempre cria a obra na empresa presente
+     * na própria sessão.
+     *
+     * SUPER_ADMIN pode informar a empresa no corpo da requisição.
+     */
+    const companyId =
+      user.role === 'SUPER_ADMIN'
+        ? requestedCompanyId ?? user.companyId
+        : user.companyId
+
+    if (!companyId) {
+      throw new BusinessError(
+        'Empresa obrigatória para criar a obra',
+        'COMPANY_REQUIRED',
+      )
+    }
+
+    /*
+     * Confirma que a empresa realmente existe antes de tentar
+     * criar a obra.
+     */
+    const company =
+      await prisma.company.findUnique({
+        where: {
+          id: companyId,
+        },
+
+        include: {
+          _count: {
+            select: {
+              worksites: {
+                where: {
+                  status: {
+                    notIn: [
+                      'CONCLUIDA',
+                      'CANCELADA',
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      })
+
+    if (!company) {
+      throw new NotFoundError(
+        'Empresa não encontrada',
+      )
+    }
+
+    /*
+     * Quando um grupo é informado, ele precisa pertencer
+     * à mesma empresa da nova obra.
+     */
+    if (data.groupId) {
+      const group =
+        await prisma.worksiteGroup.findFirst({
+          where: {
+            id: data.groupId,
+            companyId,
+          },
+
+          select: {
+            id: true,
+          },
+        })
+
+      if (!group) {
+        throw new BusinessError(
+          'Grupo não encontrado nesta empresa',
+          'GROUP_NOT_FOUND',
+        )
+      }
+    }
+
+    /*
+     * Verifica o limite de obras ativas previsto no plano
+     * contratado pela empresa.
+     */
+    if (
+      company._count.worksites >=
+      company.maxWorksites
+    ) {
+      throw new ConflictError(
+        'Limite de obras ativas do plano atingido.',
+        'WORKSITE_LIMIT_REACHED',
+      )
+    }
+
+    const isProfileComplete =
+      calculateWorksiteProfileCompletion({
         name: data.name,
         status: data.status,
-        registrationMode: data.registrationMode,
-        isProfileComplete,
-        hasTaskList: data.hasTaskList ?? false,
-        groupId: data.groupId ?? null,
-        // Campos opcionais
-        address: data.address || null,
-        neighborhood: data.neighborhood || null,
-        city: data.city || null,
-        state: data.state || null,
-        cep: data.cep || null,
-        artNumber: data.artNumber || null,
-        responsibleName: data.responsibleName || null,
-        responsibleCrea: data.responsibleCrea || null,
-        startDate: data.startDate ? new Date(data.startDate) : null,
-        endDateForecast: data.endDateForecast ? new Date(data.endDateForecast) : null,
-        description: data.description || null,
-        clientName: data.clientName || null,
-        contractNumber: data.contractNumber || null,
-        contractType: data.contractType || null,
-        totalArea: data.totalArea ?? null,
-        createdById: user.id,
-      },
-    })
+        groupId: data.groupId || null,
+        responsibleName:
+          data.responsibleName || null,
+        startDate: data.startDate || null,
+        endDateForecast:
+          data.endDateForecast || null,
+        registrationMode:
+          data.registrationMode,
+      })
+
+    const worksite =
+      await prisma.worksite.create({
+        data: {
+          companyId,
+          name: data.name,
+          status: data.status,
+          registrationMode:
+            data.registrationMode,
+          isProfileComplete,
+          hasTaskList:
+            data.hasTaskList ?? false,
+          groupId:
+            data.groupId ?? null,
+
+          address:
+            data.address || null,
+
+          neighborhood:
+            data.neighborhood || null,
+
+          city:
+            data.city || null,
+
+          state:
+            data.state || null,
+
+          cep:
+            data.cep || null,
+
+          artNumber:
+            data.artNumber || null,
+
+          responsibleName:
+            data.responsibleName || null,
+
+          responsibleCrea:
+            data.responsibleCrea || null,
+
+          startDate:
+            data.startDate
+              ? new Date(data.startDate)
+              : null,
+
+          endDateForecast:
+            data.endDateForecast
+              ? new Date(
+                  data.endDateForecast,
+                )
+              : null,
+
+          description:
+            data.description || null,
+
+          clientName:
+            data.clientName || null,
+
+          contractNumber:
+            data.contractNumber || null,
+
+          contractType:
+            data.contractType || null,
+
+          totalArea:
+            data.totalArea ?? null,
+
+          createdById: user.id,
+        },
+      })
 
     await logAuditEvent({
       userId: user.id,
@@ -163,12 +467,23 @@ export async function POST(req: NextRequest) {
       action: 'worksite.created',
       entityType: 'Worksite',
       entityId: worksite.id,
-      payload: { name: worksite.name, status: worksite.status, registrationMode: worksite.registrationMode, isProfileComplete },
+
+      payload: {
+        name: worksite.name,
+        status: worksite.status,
+        registrationMode:
+          worksite.registrationMode,
+        isProfileComplete,
+      },
+
       req,
     })
 
-    return created(worksite, 'Obra criada com sucesso')
-  } catch (err) {
-    return handleError(err)
+    return created(
+      worksite,
+      'Obra criada com sucesso',
+    )
+  } catch (error) {
+    return handleError(error)
   }
 }
