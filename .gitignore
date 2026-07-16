@@ -53,3 +53,6 @@ prisma/*.db-journal
 *.swp
 *.swo
 build-p0.log
+
+# Sentry Config File
+.env.sentry-build-plugin
